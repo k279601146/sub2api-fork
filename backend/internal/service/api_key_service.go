@@ -43,6 +43,7 @@ const (
 	apiKeyLastUsedMinTouch = 30 * time.Second
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
 	apiKeyLastUsedFailBackoff = 5 * time.Second
+	IDEGatewayAPIKeyName      = "IDE Client"
 )
 
 type APIKeyRepository interface {
@@ -434,6 +435,40 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
 	return keys, pagination, nil
+}
+
+// GetOrCreateIDEGatewayKey returns the server-side API key used to bill and route IDE JWT requests.
+//
+// The IDE client never receives this key. The gateway auth middleware validates the user's JWT,
+// resolves this key on the server, then hands the request back to the existing API-key auth path.
+func (s *APIKeyService) GetOrCreateIDEGatewayKey(ctx context.Context, userID int64) (*APIKey, error) {
+	keys, _, err := s.List(ctx, userID, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  100,
+		SortBy:    "created_at",
+		SortOrder: pagination.SortOrderDesc,
+	}, APIKeyListFilters{
+		Search: IDEGatewayAPIKeyName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for i := range keys {
+		if keys[i].Name == IDEGatewayAPIKeyName {
+			return &keys[i], nil
+		}
+	}
+
+	var groupID *int64
+	groups, err := s.GetAvailableGroups(ctx, userID)
+	if err == nil && len(groups) > 0 {
+		groupID = &groups[0].ID
+	}
+
+	return s.Create(ctx, userID, CreateAPIKeyRequest{
+		Name:    IDEGatewayAPIKeyName,
+		GroupID: groupID,
+	})
 }
 
 func (s *APIKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {

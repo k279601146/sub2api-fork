@@ -14,8 +14,79 @@ import (
 )
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
-func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
-	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
+func NewAPIKeyAuthMiddleware(
+	apiKeyService *service.APIKeyService,
+	subscriptionService *service.SubscriptionService,
+	cfg *config.Config,
+	authService *service.AuthService,
+	userService *service.UserService,
+) APIKeyAuthMiddleware {
+	original := apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg)
+	return APIKeyAuthMiddleware(apiKeyOrJWTAuth(apiKeyService, authService, userService, original))
+}
+
+func apiKeyOrJWTAuth(
+	apiKeyService *service.APIKeyService,
+	authService *service.AuthService,
+	userService *service.UserService,
+	originalKeyAuth gin.HandlerFunc,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			originalKeyAuth(c)
+			return
+		}
+
+		token := strings.TrimSpace(parts[1])
+		if !looksLikeJWT(token) {
+			originalKeyAuth(c)
+			return
+		}
+		if authService == nil || userService == nil {
+			AbortWithError(c, 401, "INVALID_TOKEN", "Invalid token")
+			return
+		}
+
+		claims, err := authService.ValidateToken(token)
+		if err != nil {
+			if errors.Is(err, service.ErrTokenExpired) || errors.Is(err, service.ErrAccessTokenExpired) {
+				AbortWithError(c, 401, "TOKEN_EXPIRED", "Token has expired")
+				return
+			}
+			AbortWithError(c, 401, "INVALID_TOKEN", "Invalid token")
+			return
+		}
+
+		user, err := userService.GetByID(c.Request.Context(), claims.UserID)
+		if err != nil {
+			AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
+			return
+		}
+		if !user.IsActive() {
+			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+			return
+		}
+		if claims.TokenVersion != user.TokenVersion {
+			AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked")
+			return
+		}
+
+		apiKey, err := apiKeyService.GetOrCreateIDEGatewayKey(c.Request.Context(), user.ID)
+		if err != nil {
+			AbortWithError(c, 500, "IDE_API_KEY_RESOLUTION_FAILED", "Failed to resolve IDE gateway credentials")
+			return
+		}
+
+		c.Request.Header.Set("Authorization", "Bearer "+apiKey.Key)
+		c.Set("auth_type", "ide_jwt")
+		originalKeyAuth(c)
+	}
+}
+
+func looksLikeJWT(token string) bool {
+	return strings.HasPrefix(token, "eyJ") && strings.Count(token, ".") == 2
 }
 
 // apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）

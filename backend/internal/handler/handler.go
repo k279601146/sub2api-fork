@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	idehandler "github.com/Wei-Shaw/sub2api/internal/handler/ide"
 )
 
 // AdminHandlers contains all admin-related HTTP handlers
@@ -41,6 +42,7 @@ type AdminHandlers struct {
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	Auth             *AuthHandler
+	IDEAuth          *idehandler.AuthHandler
 	User             *UserHandler
 	APIKey           *APIKeyHandler
 	Usage            *UsageHandler
