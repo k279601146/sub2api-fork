@@ -689,6 +689,34 @@ func TestGatewayService_AnthropicOAuth_NotAffectedByAPIKeyPassthroughToggle(t *t
 	require.Contains(t, getHeaderRaw(req.Header, "anthropic-beta"), claude.BetaOAuth, "OAuth 链路仍应按原逻辑补齐 oauth beta")
 }
 
+func TestGatewayService_AnthropicAPIKey_PreservesIDECompatibilityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("x-request-id", "req-ide-456")
+	c.Request.Header.Set("session_id", "session-ide-456")
+	c.Request.Header.Set("anthropic-version", "2023-06-01")
+	c.Request.Header.Set("anthropic-beta", "fine-grained-tool-streaming-2025-05-14")
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+		},
+	}
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+	}
+
+	req, err := svc.buildUpstreamRequest(context.Background(), c, account, []byte(`{"model":"claude-3-7-sonnet-20250219"}`), "api-key", "apikey", "claude-3-7-sonnet-20250219", true, false)
+	require.NoError(t, err)
+	require.Equal(t, "req-ide-456", getHeaderRaw(req.Header, "x-request-id"))
+	require.Equal(t, "session-ide-456", getHeaderRaw(req.Header, "session_id"))
+	require.Equal(t, "2023-06-01", getHeaderRaw(req.Header, "anthropic-version"))
+	require.Contains(t, getHeaderRaw(req.Header, "anthropic-beta"), "fine-grained-tool-streaming-2025-05-14")
+}
+
 func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

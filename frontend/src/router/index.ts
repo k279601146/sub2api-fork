@@ -541,6 +541,46 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/ide',
+    redirect: '/admin/ide/sessions'
+  },
+  {
+    path: '/admin/ide/sessions',
+    name: 'AdminIDESessions',
+    component: () => import('@/views/admin/ide/IDESessionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'IDE Sessions',
+      titleKey: 'admin.ide.sessions.title',
+      descriptionKey: 'admin.ide.sessions.description'
+    }
+  },
+  {
+    path: '/admin/ide/releases',
+    name: 'AdminIDEReleases',
+    component: () => import('@/views/admin/ide/IDEReleasesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'IDE Releases',
+      titleKey: 'admin.ide.releases.title',
+      descriptionKey: 'admin.ide.releases.description'
+    }
+  },
+  {
+    path: '/admin/ide/stats',
+    name: 'AdminIDEStats',
+    component: () => import('@/views/admin/ide/IDEStatsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'IDE Stats',
+      titleKey: 'admin.ide.stats.title',
+      descriptionKey: 'admin.ide.stats.description'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },

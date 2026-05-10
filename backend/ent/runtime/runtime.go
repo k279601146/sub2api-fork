@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/iderelease"
+	"github.com/Wei-Shaw/sub2api/ent/idesession"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -861,6 +863,164 @@ func init() {
 	groupDescRpmLimit := groupFields[30].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
+	idereleaseMixin := schema.IDERelease{}.Mixin()
+	idereleaseMixinFields0 := idereleaseMixin[0].Fields()
+	_ = idereleaseMixinFields0
+	idereleaseFields := schema.IDERelease{}.Fields()
+	_ = idereleaseFields
+	// idereleaseDescCreatedAt is the schema descriptor for created_at field.
+	idereleaseDescCreatedAt := idereleaseMixinFields0[0].Descriptor()
+	// iderelease.DefaultCreatedAt holds the default value on creation for the created_at field.
+	iderelease.DefaultCreatedAt = idereleaseDescCreatedAt.Default.(func() time.Time)
+	// idereleaseDescUpdatedAt is the schema descriptor for updated_at field.
+	idereleaseDescUpdatedAt := idereleaseMixinFields0[1].Descriptor()
+	// iderelease.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	iderelease.DefaultUpdatedAt = idereleaseDescUpdatedAt.Default.(func() time.Time)
+	// iderelease.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	iderelease.UpdateDefaultUpdatedAt = idereleaseDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// idereleaseDescKind is the schema descriptor for kind field.
+	idereleaseDescKind := idereleaseFields[0].Descriptor()
+	// iderelease.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	iderelease.KindValidator = func() func(string) error {
+		validators := idereleaseDescKind.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(kind string) error {
+			for _, fn := range fns {
+				if err := fn(kind); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// idereleaseDescVersion is the schema descriptor for version field.
+	idereleaseDescVersion := idereleaseFields[1].Descriptor()
+	// iderelease.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	iderelease.VersionValidator = func() func(string) error {
+		validators := idereleaseDescVersion.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(version string) error {
+			for _, fn := range fns {
+				if err := fn(version); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// idereleaseDescMinAppVersion is the schema descriptor for min_app_version field.
+	idereleaseDescMinAppVersion := idereleaseFields[2].Descriptor()
+	// iderelease.DefaultMinAppVersion holds the default value on creation for the min_app_version field.
+	iderelease.DefaultMinAppVersion = idereleaseDescMinAppVersion.Default.(string)
+	// iderelease.MinAppVersionValidator is a validator for the "min_app_version" field. It is called by the builders before save.
+	iderelease.MinAppVersionValidator = idereleaseDescMinAppVersion.Validators[0].(func(string) error)
+	// idereleaseDescBinaries is the schema descriptor for binaries field.
+	idereleaseDescBinaries := idereleaseFields[3].Descriptor()
+	// iderelease.DefaultBinaries holds the default value on creation for the binaries field.
+	iderelease.DefaultBinaries = idereleaseDescBinaries.Default.(func() map[string]map[string]interface{})
+	// idereleaseDescReleaseNotes is the schema descriptor for release_notes field.
+	idereleaseDescReleaseNotes := idereleaseFields[4].Descriptor()
+	// iderelease.DefaultReleaseNotes holds the default value on creation for the release_notes field.
+	iderelease.DefaultReleaseNotes = idereleaseDescReleaseNotes.Default.(string)
+	// idereleaseDescIsMandatory is the schema descriptor for is_mandatory field.
+	idereleaseDescIsMandatory := idereleaseFields[5].Descriptor()
+	// iderelease.DefaultIsMandatory holds the default value on creation for the is_mandatory field.
+	iderelease.DefaultIsMandatory = idereleaseDescIsMandatory.Default.(bool)
+	// idereleaseDescIsLatest is the schema descriptor for is_latest field.
+	idereleaseDescIsLatest := idereleaseFields[6].Descriptor()
+	// iderelease.DefaultIsLatest holds the default value on creation for the is_latest field.
+	iderelease.DefaultIsLatest = idereleaseDescIsLatest.Default.(bool)
+	idesessionMixin := schema.IDESession{}.Mixin()
+	idesessionMixinFields0 := idesessionMixin[0].Fields()
+	_ = idesessionMixinFields0
+	idesessionFields := schema.IDESession{}.Fields()
+	_ = idesessionFields
+	// idesessionDescCreatedAt is the schema descriptor for created_at field.
+	idesessionDescCreatedAt := idesessionMixinFields0[0].Descriptor()
+	// idesession.DefaultCreatedAt holds the default value on creation for the created_at field.
+	idesession.DefaultCreatedAt = idesessionDescCreatedAt.Default.(func() time.Time)
+	// idesessionDescUpdatedAt is the schema descriptor for updated_at field.
+	idesessionDescUpdatedAt := idesessionMixinFields0[1].Descriptor()
+	// idesession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	idesession.DefaultUpdatedAt = idesessionDescUpdatedAt.Default.(func() time.Time)
+	// idesession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	idesession.UpdateDefaultUpdatedAt = idesessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// idesessionDescSessionID is the schema descriptor for session_id field.
+	idesessionDescSessionID := idesessionFields[0].Descriptor()
+	// idesession.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	idesession.SessionIDValidator = func() func(string) error {
+		validators := idesessionDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// idesessionDescJwtTokenHash is the schema descriptor for jwt_token_hash field.
+	idesessionDescJwtTokenHash := idesessionFields[2].Descriptor()
+	// idesession.JwtTokenHashValidator is a validator for the "jwt_token_hash" field. It is called by the builders before save.
+	idesession.JwtTokenHashValidator = func() func(string) error {
+		validators := idesessionDescJwtTokenHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(jwt_token_hash string) error {
+			for _, fn := range fns {
+				if err := fn(jwt_token_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// idesessionDescClientID is the schema descriptor for client_id field.
+	idesessionDescClientID := idesessionFields[3].Descriptor()
+	// idesession.DefaultClientID holds the default value on creation for the client_id field.
+	idesession.DefaultClientID = idesessionDescClientID.Default.(string)
+	// idesession.ClientIDValidator is a validator for the "client_id" field. It is called by the builders before save.
+	idesession.ClientIDValidator = idesessionDescClientID.Validators[0].(func(string) error)
+	// idesessionDescClientVersion is the schema descriptor for client_version field.
+	idesessionDescClientVersion := idesessionFields[4].Descriptor()
+	// idesession.DefaultClientVersion holds the default value on creation for the client_version field.
+	idesession.DefaultClientVersion = idesessionDescClientVersion.Default.(string)
+	// idesession.ClientVersionValidator is a validator for the "client_version" field. It is called by the builders before save.
+	idesession.ClientVersionValidator = idesessionDescClientVersion.Validators[0].(func(string) error)
+	// idesessionDescPlatform is the schema descriptor for platform field.
+	idesessionDescPlatform := idesessionFields[5].Descriptor()
+	// idesession.DefaultPlatform holds the default value on creation for the platform field.
+	idesession.DefaultPlatform = idesessionDescPlatform.Default.(string)
+	// idesession.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	idesession.PlatformValidator = idesessionDescPlatform.Validators[0].(func(string) error)
+	// idesessionDescDeviceID is the schema descriptor for device_id field.
+	idesessionDescDeviceID := idesessionFields[6].Descriptor()
+	// idesession.DefaultDeviceID holds the default value on creation for the device_id field.
+	idesession.DefaultDeviceID = idesessionDescDeviceID.Default.(string)
+	// idesession.DeviceIDValidator is a validator for the "device_id" field. It is called by the builders before save.
+	idesession.DeviceIDValidator = idesessionDescDeviceID.Validators[0].(func(string) error)
+	// idesessionDescRevoked is the schema descriptor for revoked field.
+	idesessionDescRevoked := idesessionFields[9].Descriptor()
+	// idesession.DefaultRevoked holds the default value on creation for the revoked field.
+	idesession.DefaultRevoked = idesessionDescRevoked.Default.(bool)
+	// idesessionDescRevokeReason is the schema descriptor for revoke_reason field.
+	idesessionDescRevokeReason := idesessionFields[10].Descriptor()
+	// idesession.DefaultRevokeReason holds the default value on creation for the revoke_reason field.
+	idesession.DefaultRevokeReason = idesessionDescRevokeReason.Default.(string)
+	// idesession.RevokeReasonValidator is a validator for the "revoke_reason" field. It is called by the builders before save.
+	idesession.RevokeReasonValidator = idesessionDescRevokeReason.Validators[0].(func(string) error)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

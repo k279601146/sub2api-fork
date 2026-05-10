@@ -764,6 +764,18 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
+    {
+      path: '/admin/ide',
+      label: t('nav.ideClient'),
+      icon: ServerIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      children: [
+        { path: '/admin/ide/sessions', label: t('nav.ideSessions'), icon: UsersIcon },
+        { path: '/admin/ide/releases', label: t('nav.ideReleases'), icon: ServerIcon },
+        { path: '/admin/ide/stats', label: t('nav.ideStats'), icon: ChartIcon },
+      ],
+    },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
   ]
 

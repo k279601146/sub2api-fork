@@ -378,6 +378,10 @@ export default {
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',
     paymentPlans: 'Plans',
+    ideClient: 'IDE Client',
+    ideSessions: 'Client Sessions',
+    ideReleases: 'Releases',
+    ideStats: 'Client Stats',
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
@@ -4221,6 +4225,56 @@ export default {
       failedToUpdate: 'Failed to update promo code',
       failedToDelete: 'Failed to delete promo code',
       failedToLoadUsages: 'Failed to load usage records'
+    },
+
+    ide: {
+      sessions: {
+        title: 'IDE Client Sessions',
+        description: 'Review IDE auth endpoints, JWT policy, and available client entry points',
+        authMode: 'Auth Mode',
+        revokeScope: 'Revoke Scope',
+        allUserTokens: 'All User Tokens',
+        client: 'Client',
+        endpoints: 'Endpoints',
+        activeList: 'Active Sessions',
+        user: 'User',
+        platform: 'Platform',
+        version: 'Client Version',
+        lastUsed: 'Last Used',
+        status: 'Status',
+        revoked: 'Revoked',
+        active: 'Active',
+        revoke: 'Revoke'
+      },
+      releases: {
+        title: 'IDE Releases',
+        description: 'View the app and engine versions exposed by the updater endpoints',
+        current: 'Current Version',
+        minApp: 'Minimum App Version',
+        size: 'File Size',
+        mandatory: 'Mandatory',
+        optional: 'Optional',
+        publish: 'Publish Release',
+        kind: 'Kind',
+        version: 'Version',
+        platform: 'Platform',
+        downloadUrl: 'Download URL',
+        notes: 'Release Notes'
+      },
+      stats: {
+        title: 'IDE Client Stats',
+        description: 'Check IDE telemetry, usage, and plan endpoint availability',
+        telemetry: 'Telemetry Endpoint',
+        usage: 'Usage Endpoint',
+        plan: 'Plan Endpoint',
+        healthCheck: 'Telemetry Probe',
+        healthCheckDesc: 'Send a management probe event without code content to verify the IDE APM receiver.',
+        sendProbe: 'Send Probe',
+        probeOk: 'Probe event submitted',
+        activeSessions: 'Active Sessions',
+        revokedSessions: 'Revoked Sessions',
+        totalSessions: 'Total Sessions'
+      }
     },
 
     // Usage Records

@@ -165,6 +165,30 @@ func (f GroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupMutation", m)
 }
 
+// The IDEReleaseFunc type is an adapter to allow the use of ordinary
+// function as IDERelease mutator.
+type IDEReleaseFunc func(context.Context, *ent.IDEReleaseMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f IDEReleaseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.IDEReleaseMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IDEReleaseMutation", m)
+}
+
+// The IDESessionFunc type is an adapter to allow the use of ordinary
+// function as IDESession mutator.
+type IDESessionFunc func(context.Context, *ent.IDESessionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f IDESessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.IDESessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IDESessionMutation", m)
+}
+
 // The IdempotencyRecordFunc type is an adapter to allow the use of ordinary
 // function as IdempotencyRecord mutator.
 type IdempotencyRecordFunc func(context.Context, *ent.IdempotencyRecordMutation) (ent.Value, error)

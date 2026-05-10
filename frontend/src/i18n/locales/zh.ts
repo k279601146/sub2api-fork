@@ -378,6 +378,10 @@ export default {
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',
     paymentPlans: '订阅套餐',
+    ideClient: 'IDE 客户端',
+    ideSessions: '客户端会话',
+    ideReleases: '版本发布',
+    ideStats: '客户端统计',
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
@@ -4377,6 +4381,56 @@ export default {
       failedToUpdate: '更新优惠码失败',
       failedToDelete: '删除优惠码失败',
       failedToLoadUsages: '加载使用记录失败'
+    },
+
+    ide: {
+      sessions: {
+        title: 'IDE 客户端会话',
+        description: '查看 IDE 客户端认证接口、JWT 策略和当前可用的客户端入口',
+        authMode: '认证模式',
+        revokeScope: '吊销范围',
+        allUserTokens: '用户全部令牌',
+        client: '客户端',
+        endpoints: '接口',
+        activeList: '当前会话',
+        user: '用户',
+        platform: '平台',
+        version: '客户端版本',
+        lastUsed: '最后使用',
+        status: '状态',
+        revoked: '已吊销',
+        active: '活跃',
+        revoke: '吊销'
+      },
+      releases: {
+        title: 'IDE 版本发布',
+        description: '查看客户端和引擎更新接口当前暴露的版本信息',
+        current: '当前版本',
+        minApp: '最低应用版本',
+        size: '文件大小',
+        mandatory: '强制更新',
+        optional: '可选更新',
+        publish: '发布版本',
+        kind: '类型',
+        version: '版本号',
+        platform: '平台',
+        downloadUrl: '下载地址',
+        notes: '发布说明'
+      },
+      stats: {
+        title: 'IDE 客户端统计',
+        description: '检查 IDE 遥测、用量和套餐接口是否可用',
+        telemetry: '遥测入口',
+        usage: '用量入口',
+        plan: '套餐入口',
+        healthCheck: '遥测探针',
+        healthCheckDesc: '发送一条不含代码内容的管理端探针事件，验证 IDE APM 接收链路。',
+        sendProbe: '发送探针',
+        probeOk: '探针事件已提交',
+        activeSessions: '活跃会话',
+        revokedSessions: '已吊销会话',
+        totalSessions: '总会话'
+      }
     },
 
     // Usage Records

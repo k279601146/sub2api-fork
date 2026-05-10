@@ -45,6 +45,12 @@ type ErrorPassthroughRule func(*sql.Selector)
 // Group is the predicate function for group builders.
 type Group func(*sql.Selector)
 
+// IDERelease is the predicate function for iderelease builders.
+type IDERelease func(*sql.Selector)
+
+// IDESession is the predicate function for idesession builders.
+type IDESession func(*sql.Selector)
+
 // IdempotencyRecord is the predicate function for idempotencyrecord builders.
 type IdempotencyRecord func(*sql.Selector)
 

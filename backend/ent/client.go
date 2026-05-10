@@ -30,6 +30,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/iderelease"
+	"github.com/Wei-Shaw/sub2api/ent/idesession"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -84,6 +86,10 @@ type Client struct {
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
+	// IDERelease is the client for interacting with the IDERelease builders.
+	IDERelease *IDEReleaseClient
+	// IDESession is the client for interacting with the IDESession builders.
+	IDESession *IDESessionClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
@@ -150,6 +156,8 @@ func (c *Client) init() {
 	c.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
 	c.Group = NewGroupClient(c.config)
+	c.IDERelease = NewIDEReleaseClient(c.config)
+	c.IDESession = NewIDESessionClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
@@ -276,6 +284,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
 		Group:                         NewGroupClient(cfg),
+		IDERelease:                    NewIDEReleaseClient(cfg),
+		IDESession:                    NewIDESessionClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
@@ -329,6 +339,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
 		Group:                         NewGroupClient(cfg),
+		IDERelease:                    NewIDEReleaseClient(cfg),
+		IDESession:                    NewIDESessionClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
@@ -382,13 +394,13 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
-		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group, c.IDERelease,
+		c.IDESession, c.IdempotencyRecord, c.IdentityAdoptionDecision,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -401,13 +413,13 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
-		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group, c.IDERelease,
+		c.IDESession, c.IdempotencyRecord, c.IdentityAdoptionDecision,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -442,6 +454,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ErrorPassthroughRule.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
+	case *IDEReleaseMutation:
+		return c.IDERelease.mutate(ctx, m)
+	case *IDESessionMutation:
+		return c.IDESession.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *IdentityAdoptionDecisionMutation:
@@ -2652,6 +2668,288 @@ func (c *GroupClient) mutate(ctx context.Context, m *GroupMutation) (Value, erro
 		return (&GroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Group mutation op: %q", m.Op())
+	}
+}
+
+// IDEReleaseClient is a client for the IDERelease schema.
+type IDEReleaseClient struct {
+	config
+}
+
+// NewIDEReleaseClient returns a client for the IDERelease from the given config.
+func NewIDEReleaseClient(c config) *IDEReleaseClient {
+	return &IDEReleaseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `iderelease.Hooks(f(g(h())))`.
+func (c *IDEReleaseClient) Use(hooks ...Hook) {
+	c.hooks.IDERelease = append(c.hooks.IDERelease, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `iderelease.Intercept(f(g(h())))`.
+func (c *IDEReleaseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.IDERelease = append(c.inters.IDERelease, interceptors...)
+}
+
+// Create returns a builder for creating a IDERelease entity.
+func (c *IDEReleaseClient) Create() *IDEReleaseCreate {
+	mutation := newIDEReleaseMutation(c.config, OpCreate)
+	return &IDEReleaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of IDERelease entities.
+func (c *IDEReleaseClient) CreateBulk(builders ...*IDEReleaseCreate) *IDEReleaseCreateBulk {
+	return &IDEReleaseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *IDEReleaseClient) MapCreateBulk(slice any, setFunc func(*IDEReleaseCreate, int)) *IDEReleaseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &IDEReleaseCreateBulk{err: fmt.Errorf("calling to IDEReleaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*IDEReleaseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &IDEReleaseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for IDERelease.
+func (c *IDEReleaseClient) Update() *IDEReleaseUpdate {
+	mutation := newIDEReleaseMutation(c.config, OpUpdate)
+	return &IDEReleaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *IDEReleaseClient) UpdateOne(_m *IDERelease) *IDEReleaseUpdateOne {
+	mutation := newIDEReleaseMutation(c.config, OpUpdateOne, withIDERelease(_m))
+	return &IDEReleaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *IDEReleaseClient) UpdateOneID(id int64) *IDEReleaseUpdateOne {
+	mutation := newIDEReleaseMutation(c.config, OpUpdateOne, withIDEReleaseID(id))
+	return &IDEReleaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for IDERelease.
+func (c *IDEReleaseClient) Delete() *IDEReleaseDelete {
+	mutation := newIDEReleaseMutation(c.config, OpDelete)
+	return &IDEReleaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *IDEReleaseClient) DeleteOne(_m *IDERelease) *IDEReleaseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *IDEReleaseClient) DeleteOneID(id int64) *IDEReleaseDeleteOne {
+	builder := c.Delete().Where(iderelease.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &IDEReleaseDeleteOne{builder}
+}
+
+// Query returns a query builder for IDERelease.
+func (c *IDEReleaseClient) Query() *IDEReleaseQuery {
+	return &IDEReleaseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeIDERelease},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a IDERelease entity by its id.
+func (c *IDEReleaseClient) Get(ctx context.Context, id int64) (*IDERelease, error) {
+	return c.Query().Where(iderelease.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *IDEReleaseClient) GetX(ctx context.Context, id int64) *IDERelease {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *IDEReleaseClient) Hooks() []Hook {
+	return c.hooks.IDERelease
+}
+
+// Interceptors returns the client interceptors.
+func (c *IDEReleaseClient) Interceptors() []Interceptor {
+	return c.inters.IDERelease
+}
+
+func (c *IDEReleaseClient) mutate(ctx context.Context, m *IDEReleaseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&IDEReleaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&IDEReleaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&IDEReleaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&IDEReleaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown IDERelease mutation op: %q", m.Op())
+	}
+}
+
+// IDESessionClient is a client for the IDESession schema.
+type IDESessionClient struct {
+	config
+}
+
+// NewIDESessionClient returns a client for the IDESession from the given config.
+func NewIDESessionClient(c config) *IDESessionClient {
+	return &IDESessionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `idesession.Hooks(f(g(h())))`.
+func (c *IDESessionClient) Use(hooks ...Hook) {
+	c.hooks.IDESession = append(c.hooks.IDESession, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `idesession.Intercept(f(g(h())))`.
+func (c *IDESessionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.IDESession = append(c.inters.IDESession, interceptors...)
+}
+
+// Create returns a builder for creating a IDESession entity.
+func (c *IDESessionClient) Create() *IDESessionCreate {
+	mutation := newIDESessionMutation(c.config, OpCreate)
+	return &IDESessionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of IDESession entities.
+func (c *IDESessionClient) CreateBulk(builders ...*IDESessionCreate) *IDESessionCreateBulk {
+	return &IDESessionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *IDESessionClient) MapCreateBulk(slice any, setFunc func(*IDESessionCreate, int)) *IDESessionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &IDESessionCreateBulk{err: fmt.Errorf("calling to IDESessionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*IDESessionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &IDESessionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for IDESession.
+func (c *IDESessionClient) Update() *IDESessionUpdate {
+	mutation := newIDESessionMutation(c.config, OpUpdate)
+	return &IDESessionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *IDESessionClient) UpdateOne(_m *IDESession) *IDESessionUpdateOne {
+	mutation := newIDESessionMutation(c.config, OpUpdateOne, withIDESession(_m))
+	return &IDESessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *IDESessionClient) UpdateOneID(id int64) *IDESessionUpdateOne {
+	mutation := newIDESessionMutation(c.config, OpUpdateOne, withIDESessionID(id))
+	return &IDESessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for IDESession.
+func (c *IDESessionClient) Delete() *IDESessionDelete {
+	mutation := newIDESessionMutation(c.config, OpDelete)
+	return &IDESessionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *IDESessionClient) DeleteOne(_m *IDESession) *IDESessionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *IDESessionClient) DeleteOneID(id int64) *IDESessionDeleteOne {
+	builder := c.Delete().Where(idesession.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &IDESessionDeleteOne{builder}
+}
+
+// Query returns a query builder for IDESession.
+func (c *IDESessionClient) Query() *IDESessionQuery {
+	return &IDESessionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeIDESession},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a IDESession entity by its id.
+func (c *IDESessionClient) Get(ctx context.Context, id int64) (*IDESession, error) {
+	return c.Query().Where(idesession.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *IDESessionClient) GetX(ctx context.Context, id int64) *IDESession {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a IDESession.
+func (c *IDESessionClient) QueryUser(_m *IDESession) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(idesession.Table, idesession.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, idesession.UserTable, idesession.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *IDESessionClient) Hooks() []Hook {
+	return c.hooks.IDESession
+}
+
+// Interceptors returns the client interceptors.
+func (c *IDESessionClient) Interceptors() []Interceptor {
+	return c.inters.IDESession
+}
+
+func (c *IDESessionClient) mutate(ctx context.Context, m *IDESessionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&IDESessionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&IDESessionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&IDESessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&IDESessionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown IDESession mutation op: %q", m.Op())
 	}
 }
 
@@ -5341,6 +5639,22 @@ func (c *UserClient) QueryPendingAuthSessions(_m *User) *PendingAuthSessionQuery
 	return query
 }
 
+// QueryIdeSessions queries the ide_sessions edge of a User.
+func (c *UserClient) QueryIdeSessions(_m *User) *IDESessionQuery {
+	query := (&IDESessionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(idesession.Table, idesession.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.IdeSessionsTable, user.IdeSessionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.config}).Query()
@@ -6021,21 +6335,23 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
+		Group, IDERelease, IDESession, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
+		Group, IDERelease, IDESession, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Interceptor
 	}
 )
 

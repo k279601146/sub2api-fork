@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/idesession"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -590,6 +591,21 @@ func (_u *UserUpdate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserUpda
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddIdeSessionIDs adds the "ide_sessions" edge to the IDESession entity by IDs.
+func (_u *UserUpdate) AddIdeSessionIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddIdeSessionIDs(ids...)
+	return _u
+}
+
+// AddIdeSessions adds the "ide_sessions" edges to the IDESession entity.
+func (_u *UserUpdate) AddIdeSessions(v ...*IDESession) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddIdeSessionIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -845,6 +861,27 @@ func (_u *UserUpdate) RemovePendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearIdeSessions clears all "ide_sessions" edges to the IDESession entity.
+func (_u *UserUpdate) ClearIdeSessions() *UserUpdate {
+	_u.mutation.ClearIdeSessions()
+	return _u
+}
+
+// RemoveIdeSessionIDs removes the "ide_sessions" edge to IDESession entities by IDs.
+func (_u *UserUpdate) RemoveIdeSessionIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveIdeSessionIDs(ids...)
+	return _u
+}
+
+// RemoveIdeSessions removes "ide_sessions" edges to IDESession entities.
+func (_u *UserUpdate) RemoveIdeSessions(v ...*IDESession) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveIdeSessionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1587,6 +1624,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.IdeSessionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IdeSessionsTable,
+			Columns: []string{user.IdeSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(idesession.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedIdeSessionsIDs(); len(nodes) > 0 && !_u.mutation.IdeSessionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IdeSessionsTable,
+			Columns: []string{user.IdeSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(idesession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.IdeSessionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IdeSessionsTable,
+			Columns: []string{user.IdeSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(idesession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -2158,6 +2240,21 @@ func (_u *UserUpdateOne) AddPendingAuthSessions(v ...*PendingAuthSession) *UserU
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddIdeSessionIDs adds the "ide_sessions" edge to the IDESession entity by IDs.
+func (_u *UserUpdateOne) AddIdeSessionIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddIdeSessionIDs(ids...)
+	return _u
+}
+
+// AddIdeSessions adds the "ide_sessions" edges to the IDESession entity.
+func (_u *UserUpdateOne) AddIdeSessions(v ...*IDESession) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddIdeSessionIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -2413,6 +2510,27 @@ func (_u *UserUpdateOne) RemovePendingAuthSessions(v ...*PendingAuthSession) *Us
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearIdeSessions clears all "ide_sessions" edges to the IDESession entity.
+func (_u *UserUpdateOne) ClearIdeSessions() *UserUpdateOne {
+	_u.mutation.ClearIdeSessions()
+	return _u
+}
+
+// RemoveIdeSessionIDs removes the "ide_sessions" edge to IDESession entities by IDs.
+func (_u *UserUpdateOne) RemoveIdeSessionIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveIdeSessionIDs(ids...)
+	return _u
+}
+
+// RemoveIdeSessions removes "ide_sessions" edges to IDESession entities.
+func (_u *UserUpdateOne) RemoveIdeSessions(v ...*IDESession) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveIdeSessionIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -3178,6 +3296,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.IdeSessionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IdeSessionsTable,
+			Columns: []string{user.IdeSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(idesession.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedIdeSessionsIDs(); len(nodes) > 0 && !_u.mutation.IdeSessionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IdeSessionsTable,
+			Columns: []string{user.IdeSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(idesession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.IdeSessionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IdeSessionsTable,
+			Columns: []string{user.IdeSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(idesession.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

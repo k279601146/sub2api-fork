@@ -27,6 +27,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/iderelease"
+	"github.com/Wei-Shaw/sub2api/ent/idesession"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -72,6 +74,8 @@ const (
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
+	TypeIDERelease                    = "IDERelease"
+	TypeIDESession                    = "IDESession"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
 	TypePaymentAuditLog               = "PaymentAuditLog"
@@ -18021,6 +18025,1849 @@ func (m *GroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Group edge %s", name)
+}
+
+// IDEReleaseMutation represents an operation that mutates the IDERelease nodes in the graph.
+type IDEReleaseMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	kind            *string
+	version         *string
+	min_app_version *string
+	binaries        *map[string]map[string]interface{}
+	release_notes   *string
+	is_mandatory    *bool
+	is_latest       *bool
+	published_at    *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*IDERelease, error)
+	predicates      []predicate.IDERelease
+}
+
+var _ ent.Mutation = (*IDEReleaseMutation)(nil)
+
+// idereleaseOption allows management of the mutation configuration using functional options.
+type idereleaseOption func(*IDEReleaseMutation)
+
+// newIDEReleaseMutation creates new mutation for the IDERelease entity.
+func newIDEReleaseMutation(c config, op Op, opts ...idereleaseOption) *IDEReleaseMutation {
+	m := &IDEReleaseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeIDERelease,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withIDEReleaseID sets the ID field of the mutation.
+func withIDEReleaseID(id int64) idereleaseOption {
+	return func(m *IDEReleaseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *IDERelease
+		)
+		m.oldValue = func(ctx context.Context) (*IDERelease, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().IDERelease.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withIDERelease sets the old IDERelease of the mutation.
+func withIDERelease(node *IDERelease) idereleaseOption {
+	return func(m *IDEReleaseMutation) {
+		m.oldValue = func(context.Context) (*IDERelease, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m IDEReleaseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m IDEReleaseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *IDEReleaseMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *IDEReleaseMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().IDERelease.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *IDEReleaseMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *IDEReleaseMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *IDEReleaseMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *IDEReleaseMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *IDEReleaseMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *IDEReleaseMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *IDEReleaseMutation) SetKind(s string) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *IDEReleaseMutation) Kind() (r string, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *IDEReleaseMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *IDEReleaseMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *IDEReleaseMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *IDEReleaseMutation) ResetVersion() {
+	m.version = nil
+}
+
+// SetMinAppVersion sets the "min_app_version" field.
+func (m *IDEReleaseMutation) SetMinAppVersion(s string) {
+	m.min_app_version = &s
+}
+
+// MinAppVersion returns the value of the "min_app_version" field in the mutation.
+func (m *IDEReleaseMutation) MinAppVersion() (r string, exists bool) {
+	v := m.min_app_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinAppVersion returns the old "min_app_version" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldMinAppVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinAppVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinAppVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinAppVersion: %w", err)
+	}
+	return oldValue.MinAppVersion, nil
+}
+
+// ResetMinAppVersion resets all changes to the "min_app_version" field.
+func (m *IDEReleaseMutation) ResetMinAppVersion() {
+	m.min_app_version = nil
+}
+
+// SetBinaries sets the "binaries" field.
+func (m *IDEReleaseMutation) SetBinaries(value map[string]map[string]interface{}) {
+	m.binaries = &value
+}
+
+// Binaries returns the value of the "binaries" field in the mutation.
+func (m *IDEReleaseMutation) Binaries() (r map[string]map[string]interface{}, exists bool) {
+	v := m.binaries
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBinaries returns the old "binaries" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldBinaries(ctx context.Context) (v map[string]map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBinaries is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBinaries requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBinaries: %w", err)
+	}
+	return oldValue.Binaries, nil
+}
+
+// ResetBinaries resets all changes to the "binaries" field.
+func (m *IDEReleaseMutation) ResetBinaries() {
+	m.binaries = nil
+}
+
+// SetReleaseNotes sets the "release_notes" field.
+func (m *IDEReleaseMutation) SetReleaseNotes(s string) {
+	m.release_notes = &s
+}
+
+// ReleaseNotes returns the value of the "release_notes" field in the mutation.
+func (m *IDEReleaseMutation) ReleaseNotes() (r string, exists bool) {
+	v := m.release_notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseNotes returns the old "release_notes" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldReleaseNotes(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseNotes: %w", err)
+	}
+	return oldValue.ReleaseNotes, nil
+}
+
+// ResetReleaseNotes resets all changes to the "release_notes" field.
+func (m *IDEReleaseMutation) ResetReleaseNotes() {
+	m.release_notes = nil
+}
+
+// SetIsMandatory sets the "is_mandatory" field.
+func (m *IDEReleaseMutation) SetIsMandatory(b bool) {
+	m.is_mandatory = &b
+}
+
+// IsMandatory returns the value of the "is_mandatory" field in the mutation.
+func (m *IDEReleaseMutation) IsMandatory() (r bool, exists bool) {
+	v := m.is_mandatory
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsMandatory returns the old "is_mandatory" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldIsMandatory(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsMandatory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsMandatory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsMandatory: %w", err)
+	}
+	return oldValue.IsMandatory, nil
+}
+
+// ResetIsMandatory resets all changes to the "is_mandatory" field.
+func (m *IDEReleaseMutation) ResetIsMandatory() {
+	m.is_mandatory = nil
+}
+
+// SetIsLatest sets the "is_latest" field.
+func (m *IDEReleaseMutation) SetIsLatest(b bool) {
+	m.is_latest = &b
+}
+
+// IsLatest returns the value of the "is_latest" field in the mutation.
+func (m *IDEReleaseMutation) IsLatest() (r bool, exists bool) {
+	v := m.is_latest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsLatest returns the old "is_latest" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldIsLatest(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsLatest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsLatest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsLatest: %w", err)
+	}
+	return oldValue.IsLatest, nil
+}
+
+// ResetIsLatest resets all changes to the "is_latest" field.
+func (m *IDEReleaseMutation) ResetIsLatest() {
+	m.is_latest = nil
+}
+
+// SetPublishedAt sets the "published_at" field.
+func (m *IDEReleaseMutation) SetPublishedAt(t time.Time) {
+	m.published_at = &t
+}
+
+// PublishedAt returns the value of the "published_at" field in the mutation.
+func (m *IDEReleaseMutation) PublishedAt() (r time.Time, exists bool) {
+	v := m.published_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublishedAt returns the old "published_at" field's value of the IDERelease entity.
+// If the IDERelease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDEReleaseMutation) OldPublishedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublishedAt: %w", err)
+	}
+	return oldValue.PublishedAt, nil
+}
+
+// ResetPublishedAt resets all changes to the "published_at" field.
+func (m *IDEReleaseMutation) ResetPublishedAt() {
+	m.published_at = nil
+}
+
+// Where appends a list predicates to the IDEReleaseMutation builder.
+func (m *IDEReleaseMutation) Where(ps ...predicate.IDERelease) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the IDEReleaseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *IDEReleaseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.IDERelease, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *IDEReleaseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *IDEReleaseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (IDERelease).
+func (m *IDEReleaseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *IDEReleaseMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.created_at != nil {
+		fields = append(fields, iderelease.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, iderelease.FieldUpdatedAt)
+	}
+	if m.kind != nil {
+		fields = append(fields, iderelease.FieldKind)
+	}
+	if m.version != nil {
+		fields = append(fields, iderelease.FieldVersion)
+	}
+	if m.min_app_version != nil {
+		fields = append(fields, iderelease.FieldMinAppVersion)
+	}
+	if m.binaries != nil {
+		fields = append(fields, iderelease.FieldBinaries)
+	}
+	if m.release_notes != nil {
+		fields = append(fields, iderelease.FieldReleaseNotes)
+	}
+	if m.is_mandatory != nil {
+		fields = append(fields, iderelease.FieldIsMandatory)
+	}
+	if m.is_latest != nil {
+		fields = append(fields, iderelease.FieldIsLatest)
+	}
+	if m.published_at != nil {
+		fields = append(fields, iderelease.FieldPublishedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *IDEReleaseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case iderelease.FieldCreatedAt:
+		return m.CreatedAt()
+	case iderelease.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case iderelease.FieldKind:
+		return m.Kind()
+	case iderelease.FieldVersion:
+		return m.Version()
+	case iderelease.FieldMinAppVersion:
+		return m.MinAppVersion()
+	case iderelease.FieldBinaries:
+		return m.Binaries()
+	case iderelease.FieldReleaseNotes:
+		return m.ReleaseNotes()
+	case iderelease.FieldIsMandatory:
+		return m.IsMandatory()
+	case iderelease.FieldIsLatest:
+		return m.IsLatest()
+	case iderelease.FieldPublishedAt:
+		return m.PublishedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *IDEReleaseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case iderelease.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case iderelease.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case iderelease.FieldKind:
+		return m.OldKind(ctx)
+	case iderelease.FieldVersion:
+		return m.OldVersion(ctx)
+	case iderelease.FieldMinAppVersion:
+		return m.OldMinAppVersion(ctx)
+	case iderelease.FieldBinaries:
+		return m.OldBinaries(ctx)
+	case iderelease.FieldReleaseNotes:
+		return m.OldReleaseNotes(ctx)
+	case iderelease.FieldIsMandatory:
+		return m.OldIsMandatory(ctx)
+	case iderelease.FieldIsLatest:
+		return m.OldIsLatest(ctx)
+	case iderelease.FieldPublishedAt:
+		return m.OldPublishedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown IDERelease field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *IDEReleaseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case iderelease.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case iderelease.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case iderelease.FieldKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case iderelease.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case iderelease.FieldMinAppVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinAppVersion(v)
+		return nil
+	case iderelease.FieldBinaries:
+		v, ok := value.(map[string]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBinaries(v)
+		return nil
+	case iderelease.FieldReleaseNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseNotes(v)
+		return nil
+	case iderelease.FieldIsMandatory:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsMandatory(v)
+		return nil
+	case iderelease.FieldIsLatest:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsLatest(v)
+		return nil
+	case iderelease.FieldPublishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublishedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown IDERelease field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *IDEReleaseMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *IDEReleaseMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *IDEReleaseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown IDERelease numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *IDEReleaseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *IDEReleaseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *IDEReleaseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown IDERelease nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *IDEReleaseMutation) ResetField(name string) error {
+	switch name {
+	case iderelease.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case iderelease.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case iderelease.FieldKind:
+		m.ResetKind()
+		return nil
+	case iderelease.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case iderelease.FieldMinAppVersion:
+		m.ResetMinAppVersion()
+		return nil
+	case iderelease.FieldBinaries:
+		m.ResetBinaries()
+		return nil
+	case iderelease.FieldReleaseNotes:
+		m.ResetReleaseNotes()
+		return nil
+	case iderelease.FieldIsMandatory:
+		m.ResetIsMandatory()
+		return nil
+	case iderelease.FieldIsLatest:
+		m.ResetIsLatest()
+		return nil
+	case iderelease.FieldPublishedAt:
+		m.ResetPublishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown IDERelease field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *IDEReleaseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *IDEReleaseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *IDEReleaseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *IDEReleaseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *IDEReleaseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *IDEReleaseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *IDEReleaseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown IDERelease unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *IDEReleaseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown IDERelease edge %s", name)
+}
+
+// IDESessionMutation represents an operation that mutates the IDESession nodes in the graph.
+type IDESessionMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int64
+	created_at     *time.Time
+	updated_at     *time.Time
+	session_id     *string
+	jwt_token_hash *string
+	client_id      *string
+	client_version *string
+	platform       *string
+	device_id      *string
+	expires_at     *time.Time
+	last_used_at   *time.Time
+	revoked        *bool
+	revoke_reason  *string
+	clearedFields  map[string]struct{}
+	user           *int64
+	cleareduser    bool
+	done           bool
+	oldValue       func(context.Context) (*IDESession, error)
+	predicates     []predicate.IDESession
+}
+
+var _ ent.Mutation = (*IDESessionMutation)(nil)
+
+// idesessionOption allows management of the mutation configuration using functional options.
+type idesessionOption func(*IDESessionMutation)
+
+// newIDESessionMutation creates new mutation for the IDESession entity.
+func newIDESessionMutation(c config, op Op, opts ...idesessionOption) *IDESessionMutation {
+	m := &IDESessionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeIDESession,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withIDESessionID sets the ID field of the mutation.
+func withIDESessionID(id int64) idesessionOption {
+	return func(m *IDESessionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *IDESession
+		)
+		m.oldValue = func(ctx context.Context) (*IDESession, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().IDESession.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withIDESession sets the old IDESession of the mutation.
+func withIDESession(node *IDESession) idesessionOption {
+	return func(m *IDESessionMutation) {
+		m.oldValue = func(context.Context) (*IDESession, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m IDESessionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m IDESessionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *IDESessionMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *IDESessionMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().IDESession.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *IDESessionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *IDESessionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *IDESessionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *IDESessionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *IDESessionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *IDESessionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *IDESessionMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *IDESessionMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *IDESessionMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *IDESessionMutation) SetUserID(i int64) {
+	m.user = &i
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *IDESessionMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *IDESessionMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetJwtTokenHash sets the "jwt_token_hash" field.
+func (m *IDESessionMutation) SetJwtTokenHash(s string) {
+	m.jwt_token_hash = &s
+}
+
+// JwtTokenHash returns the value of the "jwt_token_hash" field in the mutation.
+func (m *IDESessionMutation) JwtTokenHash() (r string, exists bool) {
+	v := m.jwt_token_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJwtTokenHash returns the old "jwt_token_hash" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldJwtTokenHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJwtTokenHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJwtTokenHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJwtTokenHash: %w", err)
+	}
+	return oldValue.JwtTokenHash, nil
+}
+
+// ResetJwtTokenHash resets all changes to the "jwt_token_hash" field.
+func (m *IDESessionMutation) ResetJwtTokenHash() {
+	m.jwt_token_hash = nil
+}
+
+// SetClientID sets the "client_id" field.
+func (m *IDESessionMutation) SetClientID(s string) {
+	m.client_id = &s
+}
+
+// ClientID returns the value of the "client_id" field in the mutation.
+func (m *IDESessionMutation) ClientID() (r string, exists bool) {
+	v := m.client_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientID returns the old "client_id" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldClientID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientID: %w", err)
+	}
+	return oldValue.ClientID, nil
+}
+
+// ResetClientID resets all changes to the "client_id" field.
+func (m *IDESessionMutation) ResetClientID() {
+	m.client_id = nil
+}
+
+// SetClientVersion sets the "client_version" field.
+func (m *IDESessionMutation) SetClientVersion(s string) {
+	m.client_version = &s
+}
+
+// ClientVersion returns the value of the "client_version" field in the mutation.
+func (m *IDESessionMutation) ClientVersion() (r string, exists bool) {
+	v := m.client_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientVersion returns the old "client_version" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldClientVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientVersion: %w", err)
+	}
+	return oldValue.ClientVersion, nil
+}
+
+// ResetClientVersion resets all changes to the "client_version" field.
+func (m *IDESessionMutation) ResetClientVersion() {
+	m.client_version = nil
+}
+
+// SetPlatform sets the "platform" field.
+func (m *IDESessionMutation) SetPlatform(s string) {
+	m.platform = &s
+}
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *IDESessionMutation) Platform() (r string, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatform returns the old "platform" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+	}
+	return oldValue.Platform, nil
+}
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *IDESessionMutation) ResetPlatform() {
+	m.platform = nil
+}
+
+// SetDeviceID sets the "device_id" field.
+func (m *IDESessionMutation) SetDeviceID(s string) {
+	m.device_id = &s
+}
+
+// DeviceID returns the value of the "device_id" field in the mutation.
+func (m *IDESessionMutation) DeviceID() (r string, exists bool) {
+	v := m.device_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeviceID returns the old "device_id" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldDeviceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeviceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeviceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeviceID: %w", err)
+	}
+	return oldValue.DeviceID, nil
+}
+
+// ResetDeviceID resets all changes to the "device_id" field.
+func (m *IDESessionMutation) ResetDeviceID() {
+	m.device_id = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *IDESessionMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *IDESessionMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *IDESessionMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (m *IDESessionMutation) SetLastUsedAt(t time.Time) {
+	m.last_used_at = &t
+}
+
+// LastUsedAt returns the value of the "last_used_at" field in the mutation.
+func (m *IDESessionMutation) LastUsedAt() (r time.Time, exists bool) {
+	v := m.last_used_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsedAt returns the old "last_used_at" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldLastUsedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsedAt: %w", err)
+	}
+	return oldValue.LastUsedAt, nil
+}
+
+// ResetLastUsedAt resets all changes to the "last_used_at" field.
+func (m *IDESessionMutation) ResetLastUsedAt() {
+	m.last_used_at = nil
+}
+
+// SetRevoked sets the "revoked" field.
+func (m *IDESessionMutation) SetRevoked(b bool) {
+	m.revoked = &b
+}
+
+// Revoked returns the value of the "revoked" field in the mutation.
+func (m *IDESessionMutation) Revoked() (r bool, exists bool) {
+	v := m.revoked
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevoked returns the old "revoked" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldRevoked(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevoked is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevoked requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevoked: %w", err)
+	}
+	return oldValue.Revoked, nil
+}
+
+// ResetRevoked resets all changes to the "revoked" field.
+func (m *IDESessionMutation) ResetRevoked() {
+	m.revoked = nil
+}
+
+// SetRevokeReason sets the "revoke_reason" field.
+func (m *IDESessionMutation) SetRevokeReason(s string) {
+	m.revoke_reason = &s
+}
+
+// RevokeReason returns the value of the "revoke_reason" field in the mutation.
+func (m *IDESessionMutation) RevokeReason() (r string, exists bool) {
+	v := m.revoke_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokeReason returns the old "revoke_reason" field's value of the IDESession entity.
+// If the IDESession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IDESessionMutation) OldRevokeReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokeReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokeReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokeReason: %w", err)
+	}
+	return oldValue.RevokeReason, nil
+}
+
+// ResetRevokeReason resets all changes to the "revoke_reason" field.
+func (m *IDESessionMutation) ResetRevokeReason() {
+	m.revoke_reason = nil
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *IDESessionMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[idesession.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *IDESessionMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *IDESessionMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *IDESessionMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the IDESessionMutation builder.
+func (m *IDESessionMutation) Where(ps ...predicate.IDESession) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the IDESessionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *IDESessionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.IDESession, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *IDESessionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *IDESessionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (IDESession).
+func (m *IDESessionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *IDESessionMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.created_at != nil {
+		fields = append(fields, idesession.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, idesession.FieldUpdatedAt)
+	}
+	if m.session_id != nil {
+		fields = append(fields, idesession.FieldSessionID)
+	}
+	if m.user != nil {
+		fields = append(fields, idesession.FieldUserID)
+	}
+	if m.jwt_token_hash != nil {
+		fields = append(fields, idesession.FieldJwtTokenHash)
+	}
+	if m.client_id != nil {
+		fields = append(fields, idesession.FieldClientID)
+	}
+	if m.client_version != nil {
+		fields = append(fields, idesession.FieldClientVersion)
+	}
+	if m.platform != nil {
+		fields = append(fields, idesession.FieldPlatform)
+	}
+	if m.device_id != nil {
+		fields = append(fields, idesession.FieldDeviceID)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, idesession.FieldExpiresAt)
+	}
+	if m.last_used_at != nil {
+		fields = append(fields, idesession.FieldLastUsedAt)
+	}
+	if m.revoked != nil {
+		fields = append(fields, idesession.FieldRevoked)
+	}
+	if m.revoke_reason != nil {
+		fields = append(fields, idesession.FieldRevokeReason)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *IDESessionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case idesession.FieldCreatedAt:
+		return m.CreatedAt()
+	case idesession.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case idesession.FieldSessionID:
+		return m.SessionID()
+	case idesession.FieldUserID:
+		return m.UserID()
+	case idesession.FieldJwtTokenHash:
+		return m.JwtTokenHash()
+	case idesession.FieldClientID:
+		return m.ClientID()
+	case idesession.FieldClientVersion:
+		return m.ClientVersion()
+	case idesession.FieldPlatform:
+		return m.Platform()
+	case idesession.FieldDeviceID:
+		return m.DeviceID()
+	case idesession.FieldExpiresAt:
+		return m.ExpiresAt()
+	case idesession.FieldLastUsedAt:
+		return m.LastUsedAt()
+	case idesession.FieldRevoked:
+		return m.Revoked()
+	case idesession.FieldRevokeReason:
+		return m.RevokeReason()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *IDESessionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case idesession.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case idesession.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case idesession.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case idesession.FieldUserID:
+		return m.OldUserID(ctx)
+	case idesession.FieldJwtTokenHash:
+		return m.OldJwtTokenHash(ctx)
+	case idesession.FieldClientID:
+		return m.OldClientID(ctx)
+	case idesession.FieldClientVersion:
+		return m.OldClientVersion(ctx)
+	case idesession.FieldPlatform:
+		return m.OldPlatform(ctx)
+	case idesession.FieldDeviceID:
+		return m.OldDeviceID(ctx)
+	case idesession.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case idesession.FieldLastUsedAt:
+		return m.OldLastUsedAt(ctx)
+	case idesession.FieldRevoked:
+		return m.OldRevoked(ctx)
+	case idesession.FieldRevokeReason:
+		return m.OldRevokeReason(ctx)
+	}
+	return nil, fmt.Errorf("unknown IDESession field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *IDESessionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case idesession.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case idesession.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case idesession.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case idesession.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case idesession.FieldJwtTokenHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJwtTokenHash(v)
+		return nil
+	case idesession.FieldClientID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientID(v)
+		return nil
+	case idesession.FieldClientVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientVersion(v)
+		return nil
+	case idesession.FieldPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatform(v)
+		return nil
+	case idesession.FieldDeviceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeviceID(v)
+		return nil
+	case idesession.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case idesession.FieldLastUsedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsedAt(v)
+		return nil
+	case idesession.FieldRevoked:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevoked(v)
+		return nil
+	case idesession.FieldRevokeReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokeReason(v)
+		return nil
+	}
+	return fmt.Errorf("unknown IDESession field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *IDESessionMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *IDESessionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *IDESessionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown IDESession numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *IDESessionMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *IDESessionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *IDESessionMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown IDESession nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *IDESessionMutation) ResetField(name string) error {
+	switch name {
+	case idesession.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case idesession.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case idesession.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case idesession.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case idesession.FieldJwtTokenHash:
+		m.ResetJwtTokenHash()
+		return nil
+	case idesession.FieldClientID:
+		m.ResetClientID()
+		return nil
+	case idesession.FieldClientVersion:
+		m.ResetClientVersion()
+		return nil
+	case idesession.FieldPlatform:
+		m.ResetPlatform()
+		return nil
+	case idesession.FieldDeviceID:
+		m.ResetDeviceID()
+		return nil
+	case idesession.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case idesession.FieldLastUsedAt:
+		m.ResetLastUsedAt()
+		return nil
+	case idesession.FieldRevoked:
+		m.ResetRevoked()
+		return nil
+	case idesession.FieldRevokeReason:
+		m.ResetRevokeReason()
+		return nil
+	}
+	return fmt.Errorf("unknown IDESession field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *IDESessionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.user != nil {
+		edges = append(edges, idesession.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *IDESessionMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case idesession.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *IDESessionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *IDESessionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *IDESessionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareduser {
+		edges = append(edges, idesession.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *IDESessionMutation) EdgeCleared(name string) bool {
+	switch name {
+	case idesession.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *IDESessionMutation) ClearEdge(name string) error {
+	switch name {
+	case idesession.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown IDESession unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *IDESessionMutation) ResetEdge(name string) error {
+	switch name {
+	case idesession.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown IDESession edge %s", name)
 }
 
 // IdempotencyRecordMutation represents an operation that mutates the IdempotencyRecord nodes in the graph.
@@ -37687,6 +39534,9 @@ type UserMutation struct {
 	pending_auth_sessions         map[int64]struct{}
 	removedpending_auth_sessions  map[int64]struct{}
 	clearedpending_auth_sessions  bool
+	ide_sessions                  map[int64]struct{}
+	removedide_sessions           map[int64]struct{}
+	clearedide_sessions           bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -39445,6 +41295,60 @@ func (m *UserMutation) ResetPendingAuthSessions() {
 	m.removedpending_auth_sessions = nil
 }
 
+// AddIdeSessionIDs adds the "ide_sessions" edge to the IDESession entity by ids.
+func (m *UserMutation) AddIdeSessionIDs(ids ...int64) {
+	if m.ide_sessions == nil {
+		m.ide_sessions = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.ide_sessions[ids[i]] = struct{}{}
+	}
+}
+
+// ClearIdeSessions clears the "ide_sessions" edge to the IDESession entity.
+func (m *UserMutation) ClearIdeSessions() {
+	m.clearedide_sessions = true
+}
+
+// IdeSessionsCleared reports if the "ide_sessions" edge to the IDESession entity was cleared.
+func (m *UserMutation) IdeSessionsCleared() bool {
+	return m.clearedide_sessions
+}
+
+// RemoveIdeSessionIDs removes the "ide_sessions" edge to the IDESession entity by IDs.
+func (m *UserMutation) RemoveIdeSessionIDs(ids ...int64) {
+	if m.removedide_sessions == nil {
+		m.removedide_sessions = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.ide_sessions, ids[i])
+		m.removedide_sessions[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedIdeSessions returns the removed IDs of the "ide_sessions" edge to the IDESession entity.
+func (m *UserMutation) RemovedIdeSessionsIDs() (ids []int64) {
+	for id := range m.removedide_sessions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// IdeSessionsIDs returns the "ide_sessions" edge IDs in the mutation.
+func (m *UserMutation) IdeSessionsIDs() (ids []int64) {
+	for id := range m.ide_sessions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetIdeSessions resets all changes to the "ide_sessions" edge.
+func (m *UserMutation) ResetIdeSessions() {
+	m.ide_sessions = nil
+	m.clearedide_sessions = false
+	m.removedide_sessions = nil
+}
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -40054,7 +41958,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 12)
+	edges := make([]string, 0, 13)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40090,6 +41994,9 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.pending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
+	}
+	if m.ide_sessions != nil {
+		edges = append(edges, user.EdgeIdeSessions)
 	}
 	return edges
 }
@@ -40170,13 +42077,19 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeIdeSessions:
+		ids := make([]ent.Value, 0, len(m.ide_sessions))
+		for id := range m.ide_sessions {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 12)
+	edges := make([]string, 0, 13)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40212,6 +42125,9 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedpending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
+	}
+	if m.removedide_sessions != nil {
+		edges = append(edges, user.EdgeIdeSessions)
 	}
 	return edges
 }
@@ -40292,13 +42208,19 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeIdeSessions:
+		ids := make([]ent.Value, 0, len(m.removedide_sessions))
+		for id := range m.removedide_sessions {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 12)
+	edges := make([]string, 0, 13)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40335,6 +42257,9 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedpending_auth_sessions {
 		edges = append(edges, user.EdgePendingAuthSessions)
 	}
+	if m.clearedide_sessions {
+		edges = append(edges, user.EdgeIdeSessions)
+	}
 	return edges
 }
 
@@ -40366,6 +42291,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedauth_identities
 	case user.EdgePendingAuthSessions:
 		return m.clearedpending_auth_sessions
+	case user.EdgeIdeSessions:
+		return m.clearedide_sessions
 	}
 	return false
 }
@@ -40417,6 +42344,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgePendingAuthSessions:
 		m.ResetPendingAuthSessions()
+		return nil
+	case user.EdgeIdeSessions:
+		m.ResetIdeSessions()
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)

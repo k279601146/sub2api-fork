@@ -697,6 +697,96 @@ var (
 			},
 		},
 	}
+	// IdeReleasesColumns holds the columns for the "ide_releases" table.
+	IdeReleasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "kind", Type: field.TypeString, Size: 20},
+		{Name: "version", Type: field.TypeString, Size: 64},
+		{Name: "min_app_version", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "binaries", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "release_notes", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "is_mandatory", Type: field.TypeBool, Default: false},
+		{Name: "is_latest", Type: field.TypeBool, Default: true},
+		{Name: "published_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// IdeReleasesTable holds the schema information for the "ide_releases" table.
+	IdeReleasesTable = &schema.Table{
+		Name:       "ide_releases",
+		Columns:    IdeReleasesColumns,
+		PrimaryKey: []*schema.Column{IdeReleasesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "iderelease_kind_version",
+				Unique:  true,
+				Columns: []*schema.Column{IdeReleasesColumns[3], IdeReleasesColumns[4]},
+			},
+			{
+				Name:    "iderelease_kind_is_latest",
+				Unique:  false,
+				Columns: []*schema.Column{IdeReleasesColumns[3], IdeReleasesColumns[9]},
+			},
+			{
+				Name:    "iderelease_published_at",
+				Unique:  false,
+				Columns: []*schema.Column{IdeReleasesColumns[10]},
+			},
+		},
+	}
+	// IdeSessionsColumns holds the columns for the "ide_sessions" table.
+	IdeSessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "session_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "jwt_token_hash", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "client_id", Type: field.TypeString, Size: 128, Default: "myide-desktop"},
+		{Name: "client_version", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "platform", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "device_id", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_used_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked", Type: field.TypeBool, Default: false},
+		{Name: "revoke_reason", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// IdeSessionsTable holds the schema information for the "ide_sessions" table.
+	IdeSessionsTable = &schema.Table{
+		Name:       "ide_sessions",
+		Columns:    IdeSessionsColumns,
+		PrimaryKey: []*schema.Column{IdeSessionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "ide_sessions_users_ide_sessions",
+				Columns:    []*schema.Column{IdeSessionsColumns[13]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idesession_jwt_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{IdeSessionsColumns[4]},
+			},
+			{
+				Name:    "idesession_user_id_revoked",
+				Unique:  false,
+				Columns: []*schema.Column{IdeSessionsColumns[13], IdeSessionsColumns[11]},
+			},
+			{
+				Name:    "idesession_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{IdeSessionsColumns[9]},
+			},
+			{
+				Name:    "idesession_last_used_at",
+				Unique:  false,
+				Columns: []*schema.Column{IdeSessionsColumns[10]},
+			},
+		},
+	}
 	// IdempotencyRecordsColumns holds the columns for the "idempotency_records" table.
 	IdempotencyRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1694,6 +1784,8 @@ var (
 		ChannelMonitorRequestTemplatesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
+		IdeReleasesTable,
+		IdeSessionsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
 		PaymentAuditLogsTable,
@@ -1769,6 +1861,13 @@ func init() {
 	}
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
+	}
+	IdeReleasesTable.Annotation = &entsql.Annotation{
+		Table: "ide_releases",
+	}
+	IdeSessionsTable.ForeignKeys[0].RefTable = UsersTable
+	IdeSessionsTable.Annotation = &entsql.Annotation{
+		Table: "ide_sessions",
 	}
 	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
 		Table: "idempotency_records",

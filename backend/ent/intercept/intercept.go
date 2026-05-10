@@ -23,6 +23,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/iderelease"
+	"github.com/Wei-Shaw/sub2api/ent/idesession"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -450,6 +452,60 @@ func (f TraverseGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.GroupQuery", q)
+}
+
+// The IDEReleaseFunc type is an adapter to allow the use of ordinary function as a Querier.
+type IDEReleaseFunc func(context.Context, *ent.IDEReleaseQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f IDEReleaseFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.IDEReleaseQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.IDEReleaseQuery", q)
+}
+
+// The TraverseIDERelease type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseIDERelease func(context.Context, *ent.IDEReleaseQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseIDERelease) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseIDERelease) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.IDEReleaseQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.IDEReleaseQuery", q)
+}
+
+// The IDESessionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type IDESessionFunc func(context.Context, *ent.IDESessionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f IDESessionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.IDESessionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.IDESessionQuery", q)
+}
+
+// The TraverseIDESession type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseIDESession func(context.Context, *ent.IDESessionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseIDESession) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseIDESession) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.IDESessionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.IDESessionQuery", q)
 }
 
 // The IdempotencyRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1048,6 +1104,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ErrorPassthroughRuleQuery, predicate.ErrorPassthroughRule, errorpassthroughrule.OrderOption]{typ: ent.TypeErrorPassthroughRule, tq: q}, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: q}, nil
+	case *ent.IDEReleaseQuery:
+		return &query[*ent.IDEReleaseQuery, predicate.IDERelease, iderelease.OrderOption]{typ: ent.TypeIDERelease, tq: q}, nil
+	case *ent.IDESessionQuery:
+		return &query[*ent.IDESessionQuery, predicate.IDESession, idesession.OrderOption]{typ: ent.TypeIDESession, tq: q}, nil
 	case *ent.IdempotencyRecordQuery:
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:

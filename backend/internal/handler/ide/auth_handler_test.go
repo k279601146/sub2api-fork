@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -70,6 +71,7 @@ func TestTokenExchangesWebJWTForIDEToken(t *testing.T) {
 		TokenVersionResolved: true,
 	}
 	handler, authSvc, _ := newIDEAuthTestServices(user)
+	resetIDEAuthMemoryForTest()
 
 	webToken, err := authSvc.GenerateToken(user)
 	require.NoError(t, err)
@@ -92,6 +94,7 @@ func TestTokenExchangesWebJWTForIDEToken(t *testing.T) {
 			ExpiresIn     int    `json:"expires_in"`
 			ClientID      string `json:"client_id"`
 			ClientVersion string `json:"client_version"`
+			SessionID     string `json:"session_id"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
@@ -101,6 +104,7 @@ func TestTokenExchangesWebJWTForIDEToken(t *testing.T) {
 	require.Equal(t, 3600, envelope.Data.ExpiresIn)
 	require.Equal(t, defaultIDEClientID, envelope.Data.ClientID)
 	require.Equal(t, "1.2.3", envelope.Data.ClientVersion)
+	require.NotEmpty(t, envelope.Data.SessionID)
 
 	claims, err := authSvc.ValidateToken(envelope.Data.AccessToken)
 	require.NoError(t, err)
@@ -108,8 +112,89 @@ func TestTokenExchangesWebJWTForIDEToken(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), "refresh_token")
 }
 
+func TestPKCEAuthorizeCallbackAndTokenFlow(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetIDEAuthMemoryForTest()
+	user := &service.User{
+		ID:                   77,
+		Email:                "pkce@example.com",
+		Role:                 service.RoleUser,
+		Status:               service.StatusActive,
+		Concurrency:          5,
+		TokenVersion:         2,
+		TokenVersionResolved: true,
+	}
+	handler, authSvc, _ := newIDEAuthTestServices(user)
+
+	verifier := "this-is-a-test-code-verifier"
+	authorizeRecorder := httptest.NewRecorder()
+	authorizeCtx, _ := gin.CreateTestContext(authorizeRecorder)
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/ide/auth/authorize?redirect_uri=myide://callback&response_mode=json&code_challenge_method=S256&code_challenge="+url.QueryEscape(computePKCEChallenge(verifier)),
+		nil,
+	)
+	authorizeReq.Header.Set("Accept", "application/json")
+	authorizeCtx.Request = authorizeReq
+
+	handler.Authorize(authorizeCtx)
+
+	require.Equal(t, http.StatusOK, authorizeRecorder.Code)
+	var authorizeEnvelope struct {
+		Code int `json:"code"`
+		Data struct {
+			State string `json:"state"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(authorizeRecorder.Body.Bytes(), &authorizeEnvelope))
+	require.Equal(t, 0, authorizeEnvelope.Code)
+	require.NotEmpty(t, authorizeEnvelope.Data.State)
+
+	webToken, err := authSvc.GenerateToken(user)
+	require.NoError(t, err)
+	callbackRecorder := httptest.NewRecorder()
+	callbackCtx, _ := gin.CreateTestContext(callbackRecorder)
+	callbackReq := httptest.NewRequest(http.MethodGet, "/ide/auth/callback?state="+url.QueryEscape(authorizeEnvelope.Data.State), nil)
+	callbackReq.Header.Set("Authorization", "Bearer "+webToken)
+	callbackCtx.Request = callbackReq
+
+	handler.Callback(callbackCtx)
+
+	require.Equal(t, http.StatusFound, callbackRecorder.Code)
+	redirectLocation := callbackRecorder.Header().Get("Location")
+	parsedRedirect, err := url.Parse(redirectLocation)
+	require.NoError(t, err)
+	require.Equal(t, "myide", parsedRedirect.Scheme)
+	require.Equal(t, "callback", parsedRedirect.Host)
+	code := parsedRedirect.Query().Get("code")
+	require.NotEmpty(t, code)
+	require.Equal(t, authorizeEnvelope.Data.State, parsedRedirect.Query().Get("state"))
+
+	tokenBody := bytes.NewBufferString(`{"code":"` + code + `","code_verifier":"` + verifier + `","client_version":"2.0.0","platform":"win32-x64","device_id":"test-device"}`)
+	tokenRecorder := httptest.NewRecorder()
+	tokenCtx, _ := gin.CreateTestContext(tokenRecorder)
+	tokenCtx.Request = httptest.NewRequest(http.MethodPost, "/ide/auth/token", tokenBody)
+	tokenCtx.Request.Header.Set("Content-Type", "application/json")
+
+	handler.Token(tokenCtx)
+
+	require.Equal(t, http.StatusOK, tokenRecorder.Code)
+	var tokenEnvelope struct {
+		Code int `json:"code"`
+		Data struct {
+			AccessToken string `json:"access_token"`
+			SessionID   string `json:"session_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(tokenRecorder.Body.Bytes(), &tokenEnvelope))
+	require.Equal(t, 0, tokenEnvelope.Code)
+	require.NotEmpty(t, tokenEnvelope.Data.AccessToken)
+	require.NotEmpty(t, tokenEnvelope.Data.SessionID)
+}
+
 func TestMeAndRevokeUseIDEToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	resetIDEAuthMemoryForTest()
 	user := &service.User{
 		ID:                   51,
 		Email:                "revoke@example.com",
@@ -144,4 +229,55 @@ func TestMeAndRevokeUseIDEToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, revokeRecorder.Code)
 	require.Len(t, repo.updated, 1)
 	require.Equal(t, int64(4), repo.users[51].TokenVersion)
+}
+
+func TestAdminRevokeSessionInvalidatesUserTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetIDEAuthMemoryForTest()
+	user := &service.User{
+		ID:                   88,
+		Email:                "admin-revoke@example.com",
+		Role:                 service.RoleUser,
+		Status:               service.StatusActive,
+		Concurrency:          5,
+		TokenVersion:         1,
+		TokenVersionResolved: true,
+	}
+	handler, authSvc, repo := newIDEAuthTestServices(user)
+
+	webToken, err := authSvc.GenerateToken(user)
+	require.NoError(t, err)
+	body := bytes.NewBufferString(`{"access_token":"` + webToken + `","client_version":"1.0.0"}`)
+	tokenRecorder := httptest.NewRecorder()
+	tokenCtx, _ := gin.CreateTestContext(tokenRecorder)
+	tokenCtx.Request = httptest.NewRequest(http.MethodPost, "/ide/auth/token", body)
+	tokenCtx.Request.Header.Set("Content-Type", "application/json")
+	handler.Token(tokenCtx)
+	require.Equal(t, http.StatusOK, tokenRecorder.Code)
+
+	var tokenEnvelope struct {
+		Data struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(tokenRecorder.Body.Bytes(), &tokenEnvelope))
+	require.NotEmpty(t, tokenEnvelope.Data.SessionID)
+
+	revokeRecorder := httptest.NewRecorder()
+	revokeCtx, _ := gin.CreateTestContext(revokeRecorder)
+	revokeCtx.Params = gin.Params{{Key: "id", Value: tokenEnvelope.Data.SessionID}}
+	revokeCtx.Request = httptest.NewRequest(http.MethodPost, "/admin/ide/sessions/"+tokenEnvelope.Data.SessionID+"/revoke", nil)
+	handler.RevokeSession(revokeCtx)
+
+	require.Equal(t, http.StatusOK, revokeRecorder.Code)
+	require.Len(t, repo.updated, 1)
+	require.Equal(t, int64(2), repo.users[88].TokenVersion)
+}
+
+func resetIDEAuthMemoryForTest() {
+	ideAuthMemory.Lock()
+	defer ideAuthMemory.Unlock()
+	ideAuthMemory.states = map[string]ideAuthStateRecord{}
+	ideAuthMemory.codes = map[string]ideAuthCodeRecord{}
+	ideAuthMemory.sessions = map[string]IDESessionRecord{}
 }
