@@ -153,6 +153,15 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  {
+    path: '/ide/auth/authorize',
+    name: 'IDEAuthorize',
+    component: () => import('@/views/ide/IDEAuthorizeView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'IDE Authorization'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -696,7 +705,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal', '/ide/auth/authorize']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

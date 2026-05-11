@@ -121,6 +121,15 @@ type RevokeResponse struct {
 	Message string `json:"message"`
 }
 
+type ApproveRequest struct {
+	State string `json:"state"`
+}
+
+type ApproveResponse struct {
+	RedirectURL string    `json:"redirect_url"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
 type AuthorizeResponse struct {
 	State       string    `json:"state"`
 	LoginURL    string    `json:"login_url"`
@@ -165,6 +174,12 @@ func (h *AuthHandler) Authorize(c *gin.Context) {
 		return
 	}
 
+	if !wantsJSON(c) {
+		loginURL := "/login?redirect=" + url.QueryEscape(c.Request.URL.RequestURI())
+		c.Redirect(http.StatusFound, loginURL)
+		return
+	}
+
 	state, err := secureRandomToken(32)
 	if err != nil {
 		response.InternalError(c, "failed to create IDE auth state")
@@ -182,16 +197,12 @@ func (h *AuthHandler) Authorize(c *gin.Context) {
 	ideAuthMemory.Unlock()
 
 	loginURL := "/login?ide_state=" + url.QueryEscape(state)
-	if wantsJSON(c) {
-		response.Success(c, AuthorizeResponse{
-			State:       state,
-			LoginURL:    loginURL,
-			RedirectURI: redirectURI,
-			ExpiresAt:   expiresAt,
-		})
-		return
-	}
-	c.Redirect(http.StatusFound, loginURL)
+	response.Success(c, AuthorizeResponse{
+		State:       state,
+		LoginURL:    loginURL,
+		RedirectURI: redirectURI,
+		ExpiresAt:   expiresAt,
+	})
 }
 
 // Callback completes the browser-authenticated side of the PKCE flow.
@@ -247,6 +258,75 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusFound, redirectURL)
+}
+
+// Approve completes the browser side of the PKCE flow for the SPA consent page.
+func (h *AuthHandler) Approve(c *gin.Context) {
+	var req ApproveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "state is required")
+		return
+	}
+	state := strings.TrimSpace(req.State)
+	if state == "" {
+		response.BadRequest(c, "state is required")
+		return
+	}
+
+	ideAuthMemory.Lock()
+	cleanupIDEAuthMemoryLocked(time.Now().UTC())
+	authState, ok := ideAuthMemory.states[state]
+	if ok {
+		delete(ideAuthMemory.states, state)
+	}
+	ideAuthMemory.Unlock()
+	if !ok {
+		response.ErrorFrom(c, infraerrors.Unauthorized("IDE_AUTH_STATE_INVALID", "invalid or expired IDE auth state"))
+		return
+	}
+
+	subject, ok := servermiddleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.Unauthorized("IDE_AUTH_REQUIRED", "IDE authentication is required"))
+		return
+	}
+
+	user, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.Unauthorized("IDE_USER_NOT_FOUND", "user not found").WithCause(err))
+		return
+	}
+	if !user.IsActive() {
+		response.ErrorFrom(c, service.ErrUserNotActive)
+		return
+	}
+
+	code, err := secureRandomToken(32)
+	if err != nil {
+		response.InternalError(c, "failed to create IDE auth code")
+		return
+	}
+	expiresAt := time.Now().UTC().Add(ideAuthCodeTTL)
+	ideAuthMemory.Lock()
+	ideAuthMemory.codes[code] = ideAuthCodeRecord{
+		UserID:        user.ID,
+		CodeChallenge: authState.CodeChallenge,
+		ExpiresAt:     expiresAt,
+	}
+	ideAuthMemory.Unlock()
+
+	redirectURL, err := appendQuery(authState.RedirectURI, map[string]string{
+		"code":  code,
+		"state": state,
+	})
+	if err != nil {
+		response.InternalError(c, "failed to build IDE redirect URL")
+		return
+	}
+	response.Success(c, ApproveResponse{
+		RedirectURL: redirectURL,
+		ExpiresAt:   expiresAt,
+	})
 }
 
 // Token exchanges an already-authenticated web JWT for an IDE JWT.

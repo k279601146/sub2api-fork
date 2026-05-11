@@ -508,13 +508,15 @@ func TestAPIKeyAuthAcceptsJWTByResolvingIDEGatewayKey(t *testing.T) {
 		Concurrency:  3,
 		TokenVersion: 1,
 	}
+	groupID := int64(41)
 	apiKey := &service.APIKey{
-		ID:     100,
-		UserID: user.ID,
-		Key:    "server-side-ide-key",
-		Name:   service.IDEGatewayAPIKeyName,
-		Status: service.StatusActive,
-		User:   user,
+		ID:      100,
+		UserID:  user.ID,
+		Key:     "server-side-ide-key",
+		Name:    service.IDEGatewayAPIKeyName,
+		GroupID: &groupID,
+		Status:  service.StatusActive,
+		User:    user,
 	}
 	userRepo := &stubJWTUserRepo{users: map[int64]*service.User{user.ID: user}}
 	apiKeyRepo := &stubApiKeyRepo{
@@ -527,7 +529,7 @@ func TestAPIKeyAuthAcceptsJWTByResolvingIDEGatewayKey(t *testing.T) {
 		},
 		listByUserID: func(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 			require.Equal(t, user.ID, userID)
-			require.Equal(t, service.IDEGatewayAPIKeyName, filters.Search)
+			require.Equal(t, service.StatusAPIKeyActive, filters.Status)
 			clone := *apiKey
 			return []service.APIKey{clone}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 100, Pages: 1}, nil
 		},
@@ -557,6 +559,71 @@ func TestAPIKeyAuthAcceptsJWTByResolvingIDEGatewayKey(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "server-side-ide-key")
 	require.Contains(t, w.Body.String(), "ide_jwt")
+}
+
+func TestAPIKeyAuthJWTPrefersExistingGroupBoundUserKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.JWT.Secret = "test-jwt-secret-32bytes-long!!!"
+	cfg.JWT.AccessTokenExpireMinutes = 60
+
+	user := &service.User{
+		ID:           9,
+		Email:        "manual-key@example.com",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+		Balance:      10,
+		Concurrency:  3,
+		TokenVersion: 1,
+	}
+	groupID := int64(42)
+	manualKey := &service.APIKey{
+		ID:      101,
+		UserID:  user.ID,
+		Key:     "manual-group-bound-key",
+		Name:    "Manually created IDE key",
+		GroupID: &groupID,
+		Status:  service.StatusActive,
+		User:    user,
+	}
+	userRepo := &stubJWTUserRepo{users: map[int64]*service.User{user.ID: user}}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != manualKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *manualKey
+			return &clone, nil
+		},
+		listByUserID: func(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+			require.Equal(t, user.ID, userID)
+			require.Equal(t, service.StatusAPIKeyActive, filters.Status)
+			clone := *manualKey
+			return []service.APIKey{clone}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 100, Pages: 1}, nil
+		},
+	}
+	authSvc := service.NewAuthService(nil, userRepo, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+	userSvc := service.NewUserService(userRepo, nil, nil, nil)
+	apiKeySvc := service.NewAPIKeyService(apiKeyRepo, userRepo, nil, nil, nil, nil, cfg)
+	token, err := authSvc.GenerateToken(user)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeySvc, nil, cfg, authSvc, userSvc)))
+	router.GET("/t", func(c *gin.Context) {
+		resolvedKey, ok := GetAPIKeyFromContext(c)
+		require.True(t, ok)
+		c.JSON(http.StatusOK, gin.H{"api_key": resolvedKey.Key})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "manual-group-bound-key")
 }
 
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {

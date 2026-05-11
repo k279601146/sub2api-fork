@@ -192,6 +192,86 @@ func TestPKCEAuthorizeCallbackAndTokenFlow(t *testing.T) {
 	require.NotEmpty(t, tokenEnvelope.Data.SessionID)
 }
 
+func TestPKCEAuthorizeApproveAndTokenFlow(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetIDEAuthMemoryForTest()
+	user := &service.User{
+		ID:                   78,
+		Email:                "approve@example.com",
+		Role:                 service.RoleUser,
+		Status:               service.StatusActive,
+		Concurrency:          5,
+		TokenVersion:         2,
+		TokenVersionResolved: true,
+	}
+	handler, authSvc, repo := newIDEAuthTestServices(user)
+	jwtAuth := servermiddleware.NewJWTAuthMiddleware(authSvc, service.NewUserService(repo, nil, nil, nil))
+
+	verifier := "this-is-another-test-code-verifier"
+	authorizeRecorder := httptest.NewRecorder()
+	authorizeCtx, _ := gin.CreateTestContext(authorizeRecorder)
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/ide/auth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A9456%2Fcallback&response_mode=json&code_challenge_method=S256&client_id=t3code-desktop&code_challenge="+url.QueryEscape(computePKCEChallenge(verifier)),
+		nil,
+	)
+	authorizeReq.Header.Set("Accept", "application/json")
+	authorizeCtx.Request = authorizeReq
+
+	handler.Authorize(authorizeCtx)
+
+	require.Equal(t, http.StatusOK, authorizeRecorder.Code)
+	var authorizeEnvelope struct {
+		Code int `json:"code"`
+		Data struct {
+			State       string `json:"state"`
+			RedirectURI string `json:"redirect_uri"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(authorizeRecorder.Body.Bytes(), &authorizeEnvelope))
+	require.Equal(t, 0, authorizeEnvelope.Code)
+	require.NotEmpty(t, authorizeEnvelope.Data.State)
+	require.Equal(t, "http://127.0.0.1:9456/callback", authorizeEnvelope.Data.RedirectURI)
+
+	webToken, err := authSvc.GenerateToken(user)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.POST("/api/v1/ide/auth/approve", gin.HandlerFunc(jwtAuth), handler.Approve)
+
+	approveRecorder := httptest.NewRecorder()
+	approveReq := httptest.NewRequest(http.MethodPost, "/api/v1/ide/auth/approve", bytes.NewBufferString(`{"state":"`+authorizeEnvelope.Data.State+`"}`))
+	approveReq.Header.Set("Authorization", "Bearer "+webToken)
+	approveReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(approveRecorder, approveReq)
+
+	require.Equal(t, http.StatusOK, approveRecorder.Code)
+	var approveEnvelope struct {
+		Code int `json:"code"`
+		Data struct {
+			RedirectURL string `json:"redirect_url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(approveRecorder.Body.Bytes(), &approveEnvelope))
+	require.Equal(t, 0, approveEnvelope.Code)
+	parsedRedirect, err := url.Parse(approveEnvelope.Data.RedirectURL)
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", parsedRedirect.Hostname())
+	code := parsedRedirect.Query().Get("code")
+	require.NotEmpty(t, code)
+
+	tokenBody := bytes.NewBufferString(`{"code":"` + code + `","code_verifier":"` + verifier + `","client_id":"t3code-desktop","client_version":"2.0.0"}`)
+	tokenRecorder := httptest.NewRecorder()
+	tokenCtx, _ := gin.CreateTestContext(tokenRecorder)
+	tokenCtx.Request = httptest.NewRequest(http.MethodPost, "/ide/auth/token", tokenBody)
+	tokenCtx.Request.Header.Set("Content-Type", "application/json")
+
+	handler.Token(tokenCtx)
+
+	require.Equal(t, http.StatusOK, tokenRecorder.Code)
+	require.Contains(t, tokenRecorder.Body.String(), "t3code-desktop")
+}
+
 func TestMeAndRevokeUseIDEToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	resetIDEAuthMemoryForTest()

@@ -440,35 +440,83 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 // GetOrCreateIDEGatewayKey returns the server-side API key used to bill and route IDE JWT requests.
 //
 // The IDE client never receives this key. The gateway auth middleware validates the user's JWT,
-// resolves this key on the server, then hands the request back to the existing API-key auth path.
+// resolves a user-owned API key on the server, then hands the request back to the existing
+// API-key auth path. Prefer an already-created group-bound key so IDE traffic follows the same
+// group, subscription, quota, and usage rules that the user configured in the normal sub2api UI.
 func (s *APIKeyService) GetOrCreateIDEGatewayKey(ctx context.Context, userID int64) (*APIKey, error) {
-	keys, _, err := s.List(ctx, userID, pagination.PaginationParams{
-		Page:      1,
-		PageSize:  100,
-		SortBy:    "created_at",
-		SortOrder: pagination.SortOrderDesc,
-	}, APIKeyListFilters{
-		Search: IDEGatewayAPIKeyName,
-	})
+	keys, err := s.listIDEGatewayCandidateKeys(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	for i := range keys {
-		if keys[i].Name == IDEGatewayAPIKeyName {
-			return &keys[i], nil
-		}
+	if key := selectIDEGatewayKey(keys); key != nil {
+		return key, nil
 	}
 
-	var groupID *int64
-	groups, err := s.GetAvailableGroups(ctx, userID)
-	if err == nil && len(groups) > 0 {
-		groupID = &groups[0].ID
+	groupID, err := s.defaultIDEGatewayGroupID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if groupID == nil {
+		return nil, ErrGroupNotAllowed
 	}
 
 	return s.Create(ctx, userID, CreateAPIKeyRequest{
 		Name:    IDEGatewayAPIKeyName,
 		GroupID: groupID,
 	})
+}
+
+func (s *APIKeyService) listIDEGatewayCandidateKeys(ctx context.Context, userID int64) ([]APIKey, error) {
+	keys, _, err := s.List(ctx, userID, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  100,
+		SortBy:    "created_at",
+		SortOrder: pagination.SortOrderDesc,
+	}, APIKeyListFilters{
+		Status: StatusAPIKeyActive,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func selectIDEGatewayKey(keys []APIKey) *APIKey {
+	for i := range keys {
+		if isUsableIDEGatewayKey(&keys[i]) && keys[i].Name == IDEGatewayAPIKeyName {
+			return &keys[i]
+		}
+	}
+	for i := range keys {
+		if isUsableIDEGatewayKey(&keys[i]) {
+			return &keys[i]
+		}
+	}
+	return nil
+}
+
+func isUsableIDEGatewayKey(key *APIKey) bool {
+	return key != nil &&
+		key.GroupID != nil &&
+		key.IsActive() &&
+		!key.IsExpired() &&
+		!key.IsQuotaExhausted()
+}
+
+func (s *APIKeyService) defaultIDEGatewayGroupID(ctx context.Context, userID int64) (*int64, error) {
+	if s.userRepo == nil || s.groupRepo == nil || s.userSubRepo == nil {
+		return nil, ErrGroupNotAllowed
+	}
+	groups, err := s.GetAvailableGroups(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+
+	groupID := groups[0].ID
+	return &groupID, nil
 }
 
 func (s *APIKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {

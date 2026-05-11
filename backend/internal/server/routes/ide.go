@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
@@ -66,6 +67,17 @@ func RegisterIDERoutes(
 		auth.POST("/token", rateLimiter.LimitWithOptions("ide-auth-token", 30, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.IDEAuth.Token)
+	}
+
+	spaAuth := r.Group("/api/v1/ide/auth")
+	spaAuth.Use(servermiddleware.BackendModeAuthGuard(settingService))
+	{
+		spaAuth.GET("/authorize", rateLimiter.LimitWithOptions("ide-auth-authorize", 60, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.IDEAuth.Authorize)
+		spaAuth.POST("/approve", gin.HandlerFunc(jwtAuth), servermiddleware.BackendModeUserGuard(settingService), rateLimiter.LimitWithOptions("ide-auth-approve", 30, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.IDEAuth.Approve)
 	}
 
 	authenticated := r.Group("/ide")
@@ -314,10 +326,17 @@ func ideTelemetryResponse() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		var req telemetryRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
+		var raw json.RawMessage
+		if err := c.ShouldBindJSON(&raw); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid telemetry payload"})
 			return
+		}
+		var req telemetryRequest
+		if err := json.Unmarshal(raw, &req); err != nil || req.Events == nil {
+			if err := json.Unmarshal(raw, &req.Events); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid telemetry payload"})
+				return
+			}
 		}
 		if len(req.Events) > 100 {
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"code": 413, "message": "too many telemetry events"})

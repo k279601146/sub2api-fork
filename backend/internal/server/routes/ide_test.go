@@ -42,6 +42,9 @@ func TestIDERoutesExposeClientUsageAndPlanAPIs(t *testing.T) {
 	for _, route := range []string{
 		http.MethodGet + " /ide/auth/authorize",
 		http.MethodGet + " /ide/auth/callback",
+		http.MethodPost + " /ide/auth/token",
+		http.MethodGet + " /api/v1/ide/auth/authorize",
+		http.MethodPost + " /api/v1/ide/auth/approve",
 		http.MethodGet + " /ide/api/usage",
 		http.MethodGet + " /ide/api/usage/stats",
 		http.MethodGet + " /ide/api/usage/trend",
@@ -168,6 +171,19 @@ func TestIDETelemetryResponseAcceptsBoundedBatch(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/ide/api/telemetry", strings.NewReader(`{"events":[{"type":"ttft","timestamp":"2026-05-10T00:00:00Z","data":{"duration_ms":123}}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestIDETelemetryResponseAcceptsRawEventArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/ide/api/telemetry", ideTelemetryResponse())
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ide/api/telemetry", strings.NewReader(`[{"type":"admin_probe","timestamp":"2026-05-10T00:00:00Z","data":{"source":"admin_console"}}]`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, req)
 

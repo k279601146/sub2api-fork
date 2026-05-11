@@ -60,6 +60,9 @@ export default defineConfig(({ mode }) => {
     // JIT 编译器生成 AST 对象而非 JS 代码，无需 unsafe-eval
     __INTLIFY_JIT_COMPILATION__: true
   },
+  optimizeDeps: {
+    include: ['chart.js', 'vue-chartjs']
+  },
   build: {
     outDir: '../backend/internal/web/dist',
     emptyOutDir: true,
@@ -111,6 +114,14 @@ export default defineConfig(({ mode }) => {
       port: devPort,
       proxy: {
         '/api': {
+          target: backendUrl,
+          changeOrigin: true
+        },
+        '/ide/auth/token': {
+          target: backendUrl,
+          changeOrigin: true
+        },
+        '/ide/api': {
           target: backendUrl,
           changeOrigin: true
         },
