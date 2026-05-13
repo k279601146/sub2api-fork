@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -138,13 +140,50 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		return nil, err
 	}
 
-	// 执行请求
+	if strings.Contains(req.URL.String(), ":5580") {
+		var bodyBytes []byte
+		if req.Body != nil {
+			bodyBytes, _ = io.ReadAll(req.Body)
+			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		}
+		
+		// 尝试解析 JSON 找到 tools 部分，这对定位 'description' 报错至关重要
+		var bodyMap map[string]interface{}
+		json.Unmarshal(bodyBytes, &bodyMap)
+		tools, _ := bodyMap["tools"]
+		
+		toolsCount := 0
+		if toolsList, ok := tools.([]interface{}); ok {
+			toolsCount = len(toolsList)
+		}
+		
+		slog.Info("upstream_kiro_request", 
+			"url", req.URL.String(), 
+			"tools_count", toolsCount,
+			"has_tools", tools != nil,
+			"model", bodyMap["model"],
+		)
+		
+		if tools != nil {
+			toolsJSON, _ := json.Marshal(tools)
+			slog.Info("upstream_kiro_tools", "tools", string(toolsJSON))
+		}
+	}
+
 	resp, err := entry.client.Do(req)
 	if err != nil {
+		if strings.Contains(req.URL.String(), ":5580") {
+			slog.Error("upstream_kiro_error", "url", req.URL.String(), "error", err)
+		}
 		// 请求失败，立即减少计数
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 		return nil, err
+	}
+	if strings.Contains(req.URL.String(), ":5580") {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		slog.Info("upstream_kiro_status", "url", req.URL.String(), "status", resp.StatusCode, "body", string(body))
 	}
 
 	// 如果上游返回了压缩内容，解压后再交给业务层

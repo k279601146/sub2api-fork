@@ -13,9 +13,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -454,12 +456,15 @@ func (s *APIKeyService) GetOrCreateIDEGatewayKey(ctx context.Context, userID int
 
 	groupID, err := s.defaultIDEGatewayGroupID(ctx, userID)
 	if err != nil {
+		logger.L().Error("default_ide_gateway_group_failed", zap.Int64("user_id", userID), zap.Error(err))
 		return nil, err
 	}
 	if groupID == nil {
+		logger.L().Warn("no_default_ide_gateway_group", zap.Int64("user_id", userID))
 		return nil, ErrGroupNotAllowed
 	}
 
+	logger.L().Info("creating_ide_gateway_key", zap.Int64("user_id", userID), zap.Int64("group_id", *groupID))
 	return s.Create(ctx, userID, CreateAPIKeyRequest{
 		Name:    IDEGatewayAPIKeyName,
 		GroupID: groupID,

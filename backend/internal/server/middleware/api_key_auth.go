@@ -8,9 +8,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
@@ -75,9 +77,15 @@ func apiKeyOrJWTAuth(
 
 		apiKey, err := apiKeyService.GetOrCreateIDEGatewayKey(c.Request.Context(), user.ID)
 		if err != nil {
+			logger.L().Error("jwt_auth_failed: failed to resolve IDE gateway key", zap.Int64("user_id", user.ID), zap.Error(err))
 			AbortWithError(c, 500, "IDE_API_KEY_RESOLUTION_FAILED", "Failed to resolve IDE gateway credentials")
 			return
 		}
+
+		logger.L().Info("jwt_auth_success: resolved IDE gateway key", 
+			zap.Int64("user_id", user.ID), 
+			zap.String("api_key", apiKey.Key[:8]+"..."), 
+			zap.Any("group_id", apiKey.GroupID))
 
 		c.Request.Header.Set("Authorization", "Bearer "+apiKey.Key)
 		c.Set("auth_type", "ide_jwt")

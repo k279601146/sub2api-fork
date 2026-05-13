@@ -282,8 +282,15 @@ func normalizeCodexToolChoice(reqBody map[string]any) bool {
 			choiceMap["name"] = name
 			modified = true
 		}
-		if _, ok := choiceMap["function"]; ok {
-			delete(choiceMap, "function")
+		functionValue, _ := choiceMap["function"]
+		function, _ := functionValue.(map[string]any)
+		if function == nil {
+			function = make(map[string]any)
+			choiceMap["function"] = function
+			modified = true
+		}
+		if strings.TrimSpace(firstNonEmptyString(function["name"])) != name {
+			function["name"] = name
 			modified = true
 		}
 		if !codexToolsContainFunctionName(reqBody["tools"], name) {
@@ -1164,49 +1171,119 @@ func normalizeCodexTools(reqBody map[string]any) bool {
 
 		toolType, _ := toolMap["type"].(string)
 		toolType = strings.TrimSpace(toolType)
-		if toolType != "function" {
-			validTools = append(validTools, toolMap)
-			continue
-		}
-
-		// OpenAI Responses-style tools use top-level name/parameters.
-		if name, ok := toolMap["name"].(string); ok && strings.TrimSpace(name) != "" {
-			validTools = append(validTools, toolMap)
-			continue
-		}
-
-		// ChatCompletions-style tools use {type:"function", function:{...}}.
-		functionValue, hasFunction := toolMap["function"]
-		function, ok := functionValue.(map[string]any)
-		if !hasFunction || functionValue == nil || !ok || function == nil {
-			// Drop invalid function tools.
+		if toolType == "" {
+			toolType = "function"
+			toolMap["type"] = toolType
 			modified = true
-			continue
 		}
 
+		// Ensure every tool has a name and description at the top level for basic compatibility.
+		name := strings.TrimSpace(firstNonEmptyString(toolMap["name"]))
+		description := strings.TrimSpace(firstNonEmptyString(toolMap["description"]))
+
+		// If it's a function, we might find name/description inside the "function" object.
+		functionValue, _ := toolMap["function"]
+		function, _ := functionValue.(map[string]any)
+
+		if name == "" && function != nil {
+			name = strings.TrimSpace(firstNonEmptyString(function["name"]))
+		}
+		if description == "" && function != nil {
+			description = strings.TrimSpace(firstNonEmptyString(function["description"]))
+		}
+
+		// Fallback for missing fields.
+		if name == "" {
+			name = toolType
+			toolMap["name"] = name
+			modified = true
+		}
+		if description == "" {
+			description = "Tool: " + name
+			toolMap["description"] = description
+			modified = true
+		}
+
+		// Promote fields to top-level if missing (existing sub2api behavior).
 		if _, ok := toolMap["name"]; !ok {
-			if name, ok := function["name"].(string); ok && strings.TrimSpace(name) != "" {
-				toolMap["name"] = name
-				modified = true
-			}
+			toolMap["name"] = name
+			modified = true
 		}
 		if _, ok := toolMap["description"]; !ok {
-			if desc, ok := function["description"].(string); ok && strings.TrimSpace(desc) != "" {
-				toolMap["description"] = desc
-				modified = true
-			}
+			toolMap["description"] = description
+			modified = true
 		}
-		if _, ok := toolMap["parameters"]; !ok {
-			if params, ok := function["parameters"]; ok {
-				toolMap["parameters"] = params
-				modified = true
-			}
+
+		// Ensure the nested "function" object exists and contains required fields.
+		// Many upstreams (like Kiro) crash if they access tool.function.description on a non-function tool.
+		if function == nil {
+			function = make(map[string]any)
+			toolMap["function"] = function
+			modified = true
 		}
-		if _, ok := toolMap["strict"]; !ok {
-			if strict, ok := function["strict"]; ok {
-				toolMap["strict"] = strict
-				modified = true
+
+		// Sync fields into the function object.
+		if strings.TrimSpace(firstNonEmptyString(function["name"])) != name {
+			function["name"] = name
+			modified = true
+		}
+		if strings.TrimSpace(firstNonEmptyString(function["description"])) != description {
+			function["description"] = description
+			modified = true
+		}
+		if params, ok := toolMap["parameters"]; ok && function["parameters"] == nil {
+			function["parameters"] = params
+			modified = true
+		} else if params, ok := function["parameters"]; ok && toolMap["parameters"] == nil {
+			toolMap["parameters"] = params
+			modified = true
+		}
+		if strict, ok := toolMap["strict"]; ok && function["strict"] == nil {
+			function["strict"] = strict
+			modified = true
+		} else if strict, ok := function["strict"]; ok && toolMap["strict"] == nil {
+			toolMap["strict"] = strict
+			modified = true
+		}
+
+		// Ensure parameters is never nil and properties is never empty for strict upstreams like Bedrock.
+		params, _ := toolMap["parameters"].(map[string]any)
+		if params == nil {
+			params = map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
 			}
+			toolMap["parameters"] = params
+			modified = true
+		}
+
+		props, _ := params["properties"].(map[string]any)
+		if props == nil || len(props) == 0 {
+			if props == nil {
+				props = make(map[string]any)
+				params["properties"] = props
+			}
+
+			// Inject a dummy parameter to satisfy Bedrock/AWS validators which fail on empty inputSchema
+			if toolType == "web_search" {
+				props["queries"] = map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Optional search queries",
+				}
+			} else {
+				// Use an underscore prefix to indicate it's a generated/internal dummy field
+				props["_dummy"] = map[string]any{
+					"type":        "string",
+					"description": "Dummy parameter to satisfy upstream schema requirements",
+				}
+			}
+			modified = true
+		}
+
+		// Final sync back to function object
+		if function != nil {
+			function["parameters"] = params
 		}
 
 		validTools = append(validTools, toolMap)

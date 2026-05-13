@@ -2434,6 +2434,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	// 针对 Responses 协议的额外鲁棒性修补，无论账号类型。
+	// 这解决了部分上游（如 Kiro）对工具格式（tools/tool_choice）过于敏感导致的崩溃。
+	if c != nil && strings.Contains(c.Request.URL.Path, "/responses") {
+		modified := false
+		if normalizeCodexTools(reqBody) {
+			modified = true
+		}
+		if normalizeCodexToolChoice(reqBody) {
+			modified = true
+		}
+		if modified {
+			bodyModified = true
+			disablePatch()
+		}
+	}
+
 	// Re-serialize body only if modified
 	if bodyModified {
 		serializedByPatch := false

@@ -1528,11 +1528,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
+		slog.Error("account_scheduling_list_failed", "group_id", derefGroupID(groupID), "error", err)
 		return nil, err
 	}
 	if len(accounts) == 0 {
+		slog.Warn("account_scheduling_no_accounts", "group_id", derefGroupID(groupID), "platform", platform)
 		return nil, ErrNoAvailableAccounts
 	}
+	slog.Info("account_scheduling_success", "group_id", derefGroupID(groupID), "account_count", len(accounts))
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
