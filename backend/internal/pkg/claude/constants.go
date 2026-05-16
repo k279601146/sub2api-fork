@@ -1,6 +1,8 @@
 // Package claude provides constants and helpers for Claude API integration.
 package claude
 
+import "strings"
+
 // Claude Code 客户端相关常量
 
 // Beta header 常量
@@ -112,6 +114,39 @@ type Model struct {
 	Type        string `json:"type"`
 	DisplayName string `json:"display_name"`
 	CreatedAt   string `json:"created_at"`
+	OwnedBy     string `json:"owned_by,omitempty"`
+}
+
+// InferOwnedBy 根据模型 ID 前缀推断所属厂商。
+// 返回值与 OpenAI /v1/models 规范中的 owned_by 字段保持一致风格。
+func InferOwnedBy(modelID string) string {
+	lower := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(lower, "claude"):
+		return "anthropic"
+	case strings.HasPrefix(lower, "gemini") || strings.HasPrefix(lower, "palm") || strings.HasPrefix(lower, "bison"):
+		return "google"
+	case strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") ||
+		strings.HasPrefix(lower, "o4") || strings.HasPrefix(lower, "text-") || strings.HasPrefix(lower, "dall-") ||
+		strings.HasPrefix(lower, "whisper") || strings.HasPrefix(lower, "tts"):
+		return "openai"
+	case strings.HasPrefix(lower, "deepseek"):
+		return "deepseek"
+	case strings.HasPrefix(lower, "glm") || strings.HasPrefix(lower, "chatglm"):
+		return "zhipuai"
+	case strings.HasPrefix(lower, "qwen"):
+		return "alibaba"
+	case strings.HasPrefix(lower, "mistral") || strings.HasPrefix(lower, "mixtral") || strings.HasPrefix(lower, "codestral"):
+		return "mistralai"
+	case strings.HasPrefix(lower, "llama") || strings.HasPrefix(lower, "meta-"):
+		return "meta"
+	case strings.HasPrefix(lower, "grok"):
+		return "xai"
+	case strings.HasPrefix(lower, "command"):
+		return "cohere"
+	default:
+		return "unknown"
+	}
 }
 
 // DefaultModels Claude Code 客户端支持的默认模型列表
@@ -121,36 +156,42 @@ var DefaultModels = []Model{
 		Type:        "model",
 		DisplayName: "Claude Opus 4.5",
 		CreatedAt:   "2025-11-01T00:00:00Z",
+		OwnedBy:     "anthropic",
 	},
 	{
 		ID:          "claude-opus-4-6",
 		Type:        "model",
 		DisplayName: "Claude Opus 4.6",
 		CreatedAt:   "2026-02-06T00:00:00Z",
+		OwnedBy:     "anthropic",
 	},
 	{
 		ID:          "claude-opus-4-7",
 		Type:        "model",
 		DisplayName: "Claude Opus 4.7",
 		CreatedAt:   "2026-04-17T00:00:00Z",
+		OwnedBy:     "anthropic",
 	},
 	{
 		ID:          "claude-sonnet-4-6",
 		Type:        "model",
 		DisplayName: "Claude Sonnet 4.6",
 		CreatedAt:   "2026-02-18T00:00:00Z",
+		OwnedBy:     "anthropic",
 	},
 	{
 		ID:          "claude-sonnet-4-5-20250929",
 		Type:        "model",
 		DisplayName: "Claude Sonnet 4.5",
 		CreatedAt:   "2025-09-29T00:00:00Z",
+		OwnedBy:     "anthropic",
 	},
 	{
 		ID:          "claude-haiku-4-5-20251001",
 		Type:        "model",
 		DisplayName: "Claude Haiku 4.5",
 		CreatedAt:   "2025-10-01T00:00:00Z",
+		OwnedBy:     "anthropic",
 	},
 }
 

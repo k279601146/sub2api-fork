@@ -958,6 +958,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 				Type:        "model",
 				DisplayName: modelID,
 				CreatedAt:   "2024-01-01T00:00:00Z",
+				OwnedBy:     claude.InferOwnedBy(modelID),
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{
