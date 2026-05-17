@@ -14,7 +14,7 @@
 
 ```bash
 cd backend
-go run ./cmd/server
+go run ./cmd/server 2>&1 | tee server.log
 ```
 
 ## 3. 启动前端服务 (Vue/Vite)

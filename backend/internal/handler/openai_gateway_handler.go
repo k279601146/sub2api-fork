@@ -330,6 +330,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		
+		// Debug logging for upstream forward payload
+		reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", string(forwardBody)))
+
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
@@ -382,9 +386,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					switchCount++
+					bodyStr := string(failoverErr.ResponseBody)
+					if len(bodyStr) > 512 {
+						bodyStr = bodyStr[:512] + "...(truncated)"
+					}
 					reqLog.Warn("openai.upstream_failover_switching",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.String("response_body", bodyStr),
 						zap.Int("switch_count", switchCount),
 						zap.Int("max_switches", maxAccountSwitches),
 					)
@@ -766,9 +775,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 					switchCount++
+					bodyStr := string(failoverErr.ResponseBody)
+					if len(bodyStr) > 512 {
+						bodyStr = bodyStr[:512] + "...(truncated)"
+					}
 					reqLog.Warn("openai_messages.upstream_failover_switching",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.String("response_body", bodyStr),
 						zap.Int("switch_count", switchCount),
 						zap.Int("max_switches", maxAccountSwitches),
 					)

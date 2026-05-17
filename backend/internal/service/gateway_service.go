@@ -647,9 +647,11 @@ func NewGatewayService(
 	)
 	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
-	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
-		svc.initDebugGatewayBodyFile(path)
+	path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv))
+	if path == "" {
+		path = "1"
 	}
+	svc.initDebugGatewayBodyFile(path)
 	return svc
 }
 

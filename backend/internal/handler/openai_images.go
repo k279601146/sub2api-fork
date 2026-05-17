@@ -244,9 +244,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						return
 					}
 					switchCount++
+					bodyStr := string(failoverErr.ResponseBody)
+					if len(bodyStr) > 512 {
+						bodyStr = bodyStr[:512] + "...(truncated)"
+					}
 					reqLog.Warn("openai.images.upstream_failover_switching",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.String("response_body", bodyStr),
 						zap.Int("switch_count", switchCount),
 						zap.Int("max_switches", maxAccountSwitches),
 					)
