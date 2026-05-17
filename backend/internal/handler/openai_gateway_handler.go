@@ -22,6 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -325,10 +326,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 应用渠道模型映射到请求体
-		forwardBody := body
+		forwardBody := normalizeOpenAITools(body)
 		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+			forwardBody = h.gatewayService.ReplaceModelInBody(forwardBody, channelMapping.MappedModel)
 		}
 		
 		// Debug logging for upstream forward payload
@@ -1751,6 +1751,93 @@ func isOpenAIWSUpgradeRequest(r *http.Request) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(strings.TrimSpace(r.Header.Get("Connection"))), "upgrade")
+}
+
+// normalizeOpenAITools ensures tools comply with both OpenAI Responses API and upstream adapters (LiteLLM).
+// - ALL tools get a root-level "description" if missing (LiteLLM reads tool.description on every type).
+// - Function tools get root-level "name" (OpenAI Responses API requires it).
+// - Flattened function tools get wrapped into standard nested "function" objects.
+// - Built-in tool types (web_search, custom, etc.) are otherwise left untouched.
+func normalizeOpenAITools(body []byte) []byte {
+	toolsRes := gjson.GetBytes(body, "tools")
+	if !toolsRes.Exists() || !toolsRes.IsArray() {
+		return body
+	}
+	newBody := body
+	for i, tool := range toolsRes.Array() {
+		toolType := tool.Get("type").String()
+		if toolType == "" {
+			toolType = "function"
+			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.type", i), toolType)
+		}
+
+		// Ensure every tool has a root-level "description" (LiteLLM crashes without it)
+		if !tool.Get("description").Exists() || tool.Get("description").String() == "" {
+			desc := tool.Get("function.description").String()
+			if desc == "" {
+				desc = toolType + " tool"
+			}
+			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.description", i), desc)
+		}
+
+		// Non-function tools (web_search, custom, etc.): done after adding description
+		if toolType != "function" {
+			continue
+		}
+
+		// --- Function tool normalization below ---
+		hasFunction := tool.Get("function").Exists() && tool.Get("function").Type == gjson.JSON
+		hasRootName := tool.Get("name").Exists() && tool.Get("name").String() != ""
+
+		if hasFunction {
+			// Already has nested function object.
+			// OpenAI Responses API still requires root-level "name"; copy from function.name if missing.
+			if !hasRootName {
+				fname := tool.Get("function.name").String()
+				if fname != "" {
+					newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.name", i), fname)
+				}
+			}
+			continue
+		}
+
+		// Flattened tool: wrap name/description/parameters into a nested "function" object.
+		name := tool.Get("name").String()
+		if name == "" {
+			name = "unknown"
+		}
+		desc := tool.Get("description").String()
+		if desc == "" {
+			desc = "function tool"
+		}
+
+		var parameters interface{}
+		if tool.Get("parameters").Exists() {
+			parameters = tool.Get("parameters").Value()
+		} else {
+			parameters = map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			}
+		}
+
+		functionObj := map[string]interface{}{
+			"name":        name,
+			"description": desc,
+			"parameters":  parameters,
+		}
+		newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.function", i), functionObj)
+
+		// Ensure root-level "name" exists (required by Responses API)
+		if !hasRootName {
+			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.name", i), name)
+		}
+
+		// Clean up flattened fields that are now inside function{}
+		// Keep "description" at root (needed by LiteLLM), remove only "parameters"
+		newBody, _ = sjson.DeleteBytes(newBody, fmt.Sprintf("tools.%d.parameters", i))
+	}
+	return newBody
 }
 
 func closeOpenAIClientWS(conn *coderws.Conn, status coderws.StatusCode, reason string) {
