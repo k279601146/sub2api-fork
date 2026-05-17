@@ -1771,16 +1771,33 @@ func normalizeOpenAITools(body []byte) []byte {
 			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.type", i), toolType)
 		}
 
-		// Ensure every tool has a root-level "description" (LiteLLM crashes without it)
-		if !tool.Get("description").Exists() || tool.Get("description").String() == "" {
-			desc := tool.Get("function.description").String()
-			if desc == "" {
-				desc = toolType + " tool"
+		// Ensure every tool has a root-level "description" (upstream adapters may crash without it)
+		rootDesc := tool.Get("description").String()
+		if rootDesc == "" {
+			rootDesc = tool.Get("function.description").String()
+			if rootDesc == "" {
+				rootDesc = toolType + " tool"
 			}
-			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.description", i), desc)
+			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.description", i), rootDesc)
 		}
 
-		// Non-function tools (web_search, custom, etc.): done after adding description
+		// Ensure every tool has a "function" stub (upstream Codex Adapter reads tool.function.description blindly)
+		if !tool.Get("function").Exists() || tool.Get("function").Type != gjson.JSON {
+			toolName := tool.Get("name").String()
+			if toolName == "" {
+				toolName = toolType
+			}
+			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.function", i), map[string]interface{}{
+				"name":        toolName,
+				"description": rootDesc,
+				"parameters": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+				},
+			})
+		}
+
+		// Non-function tools (web_search, custom, etc.): done after adding description + function stub
 		if toolType != "function" {
 			continue
 		}
