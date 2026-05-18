@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -2223,4 +2225,154 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// FetchModelsRequest represents the request for fetching models of a custom base url/credential
+type FetchModelsRequest struct {
+	Platform  string `json:"platform" binding:"required"`
+	BaseURL   string `json:"base_url"`
+	APIKey    string `json:"api_key"`
+	ProxyID   *int64 `json:"proxy_id"`
+	AccountID *int64 `json:"account_id"`
+}
+
+// FetchModels handles fetching models dynamically from custom base URL
+// POST /api/v1/admin/accounts/fetch-models
+func (h *AccountHandler) FetchModels(c *gin.Context) {
+	var req FetchModelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	platform := strings.TrimSpace(req.Platform)
+	baseURL := strings.TrimSpace(req.BaseURL)
+	apiKey := strings.TrimSpace(req.APIKey)
+
+	// If apiKey is empty and account_id is provided, retrieve the existing decrypted api_key
+	if apiKey == "" && req.AccountID != nil && *req.AccountID > 0 {
+		account, err := h.adminService.GetAccount(c.Request.Context(), *req.AccountID)
+		if err == nil && account != nil {
+			apiKey = account.GetCredential("api_key")
+		}
+	}
+
+	// 1. 如果 base_url 为空或者是 Antigravity 等内置平台，返回静态模型
+	if baseURL == "" || platform == service.PlatformAntigravity {
+		h.returnDefaultModels(c, platform)
+		return
+	}
+
+	// 2. 校验 base_url 格式
+	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		response.BadRequest(c, "Invalid base_url format, must start with http:// or https://")
+		return
+	}
+
+	// 3. 解析并拼接 models endpoint URL 路径
+	u := strings.TrimSuffix(baseURL, "/")
+	if !strings.HasSuffix(u, "/v1") {
+		u = u + "/v1"
+	}
+	u = u + "/models"
+
+	ctx := c.Request.Context()
+
+	// 4. 创建请求
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		response.BadRequest(c, "Failed to create request: "+err.Error())
+		return
+	}
+
+	// 设置常用 Headers
+	httpReq.Header.Set("Accept", "application/json")
+	if apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		httpReq.Header.Set("x-api-key", apiKey)
+	}
+
+	// 5. 配置 http.Client 及其 Transport (支持 Proxy)
+	transport := &http.Transport{}
+	if req.ProxyID != nil && *req.ProxyID > 0 {
+		proxy, err := h.adminService.GetProxy(ctx, *req.ProxyID)
+		if err == nil && proxy != nil {
+			proxyURL := proxy.URL()
+			if proxyURL != "" {
+				if proxyURI, err := url.Parse(proxyURL); err == nil {
+					transport.Proxy = http.ProxyURL(proxyURI)
+				}
+			}
+		}
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   15 * time.Second,
+	}
+
+	// 6. 执行请求
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		response.BadRequest(c, "Failed to connect to upstream: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		response.BadRequest(c, fmt.Sprintf("Upstream returned status %d: %s", resp.StatusCode, string(body)))
+		return
+	}
+
+	// 7. 解析返回的模型列表
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		response.BadRequest(c, "Failed to parse upstream response JSON: "+err.Error())
+		return
+	}
+
+	var models []string
+	for _, m := range result.Data {
+		if m.ID != "" {
+			models = append(models, m.ID)
+		}
+	}
+
+	// 如果解析为空，也落回默认列表以保证鲁棒性
+	if len(models) == 0 {
+		h.returnDefaultModels(c, platform)
+		return
+	}
+
+	response.Success(c, models)
+}
+
+// returnDefaultModels 返回对应平台的默认静态模型
+func (h *AccountHandler) returnDefaultModels(c *gin.Context, platform string) {
+	var ids []string
+	switch platform {
+	case service.PlatformOpenAI:
+		for _, m := range openai.DefaultModels {
+			ids = append(ids, m.ID)
+		}
+	case service.PlatformGemini:
+		for _, m := range geminicli.DefaultModels {
+			ids = append(ids, m.ID)
+		}
+	case service.PlatformAntigravity:
+		for _, m := range antigravity.DefaultModels() {
+			ids = append(ids, m.ID)
+		}
+	default: // anthropic / claude / etc
+		for _, m := range claude.DefaultModels {
+			ids = append(ids, m.ID)
+		}
+	}
+	response.Success(c, ids)
 }

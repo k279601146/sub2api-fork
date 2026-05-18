@@ -637,6 +637,20 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 }
 
+/**
+ * Fetch models dynamically from a base URL using credentials and a proxy
+ */
+export async function fetchModels(payload: {
+  platform: string
+  base_url?: string
+  api_key?: string
+  proxy_id?: number | null
+  account_id?: number | null
+}): Promise<string[]> {
+  const { data } = await apiClient.post<string[]>('/admin/accounts/fetch-models', payload)
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -674,7 +688,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  setPrivacy
+  setPrivacy,
+  fetchModels
 }
 
 export default accountsAPI

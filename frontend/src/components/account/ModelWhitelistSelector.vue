@@ -81,9 +81,10 @@
       <button
         type="button"
         @click="fillRelated"
-        class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        :disabled="loading"
+        class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30 disabled:opacity-50"
       >
-        {{ t('admin.accounts.fillRelatedModels') }}
+        {{ loading ? '正在拉取...' : t('admin.accounts.fillRelatedModels') }}
       </button>
       <button
         type="button"
@@ -126,6 +127,7 @@ import { useAppStore } from '@/stores/app'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { accountsAPI } from '@/api/admin/accounts'
 
 const { t } = useI18n()
 
@@ -133,6 +135,10 @@ const props = defineProps<{
   modelValue: string[]
   platform?: string
   platforms?: string[]
+  baseUrl?: string
+  apiKey?: string
+  proxyId?: number | null
+  accountId?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -140,6 +146,7 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+const loading = ref(false)
 
 const showDropdown = ref(false)
 const searchQuery = ref('')
@@ -217,16 +224,53 @@ const handleEnter = () => {
   if (!isComposing.value) addCustom()
 }
 
-const fillRelated = () => {
+const fillRelated = async () => {
+  if (props.baseUrl) {
+    loading.value = true
+    try {
+      // 调用后端代理接口拉取最新的模型列表
+      const upstreamModels = await accountsAPI.fetchModels({
+        platform: props.platform || 'openai',
+        base_url: props.baseUrl,
+        api_key: props.apiKey,
+        proxy_id: props.proxyId,
+        account_id: props.accountId
+      })
+
+      if (upstreamModels && upstreamModels.length > 0) {
+        const newModels = [...props.modelValue]
+        for (const model of upstreamModels) {
+          if (!newModels.includes(model)) {
+            newModels.push(model)
+          }
+        }
+        emit('update:modelValue', newModels)
+        appStore.showSuccess('成功从上游获取并填充了 ' + upstreamModels.length + ' 个模型')
+        return
+      }
+    } catch (err: any) {
+      console.error('Fetch models failed:', err)
+      appStore.showError('获取上游模型失败：' + (err.response?.data?.message || err.message || '未知错误'))
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 回落逻辑：如果 baseUrl 为空，或者获取失败，则回落至原有的静态默认模型填充，以防出错
   const newModels = [...props.modelValue]
+  let fallbackCount = 0
   for (const platform of normalizedPlatforms.value) {
     for (const model of getModelsByPlatform(platform)) {
       if (!newModels.includes(model)) {
         newModels.push(model)
+        fallbackCount++
       }
     }
   }
   emit('update:modelValue', newModels)
+  if (fallbackCount > 0) {
+    appStore.showSuccess('已填充本地默认模型')
+  }
 }
 
 const clearAll = () => {
