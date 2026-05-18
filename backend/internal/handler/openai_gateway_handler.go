@@ -326,7 +326,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		forwardBody := normalizeOpenAITools(body)
+		forwardBody := normalizeOpenAITools(body, reqModel)
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(forwardBody, channelMapping.MappedModel)
 		}
@@ -1753,16 +1753,16 @@ func isOpenAIWSUpgradeRequest(r *http.Request) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(r.Header.Get("Connection"))), "upgrade")
 }
 
-// normalizeOpenAITools ensures tools comply with both OpenAI Responses API and upstream adapters (LiteLLM).
-// - ALL tools get a root-level "description" if missing (LiteLLM reads tool.description on every type).
-// - Function tools get root-level "name" (OpenAI Responses API requires it).
-// - Flattened function tools get wrapped into standard nested "function" objects.
-// - Built-in tool types (web_search, custom, etc.) are otherwise left untouched.
-func normalizeOpenAITools(body []byte) []byte {
+// normalizeOpenAITools ensures tools comply with both OpenAI Responses API and non-OpenAI adapters.
+// Uses model name to distinguish: native OpenAI models (gpt-*, o1-*, o3-*) are strict about unknown fields,
+// while adapter-routed models (claude-*, deepseek-*, gemini-*, etc.) need extra stubs for LiteLLM compatibility.
+func normalizeOpenAITools(body []byte, model string) []byte {
 	toolsRes := gjson.GetBytes(body, "tools")
 	if !toolsRes.Exists() || !toolsRes.IsArray() {
 		return body
 	}
+	lm := strings.ToLower(model)
+	isNativeOpenAI := strings.HasPrefix(lm, "gpt-") || strings.HasPrefix(lm, "o1-") || strings.HasPrefix(lm, "o3-") || strings.HasPrefix(lm, "o4-")
 	newBody := body
 	for i, tool := range toolsRes.Array() {
 		toolType := tool.Get("type").String()
@@ -1771,44 +1771,50 @@ func normalizeOpenAITools(body []byte) []byte {
 			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.type", i), toolType)
 		}
 
-		// Ensure every tool has a root-level "description" (upstream adapters may crash without it)
-		rootDesc := tool.Get("description").String()
-		if rootDesc == "" {
-			rootDesc = tool.Get("function.description").String()
-			if rootDesc == "" {
-				rootDesc = toolType + " tool"
+		isFunction := toolType == "function"
+
+		// --- Adapter-routed models need extra fields on ALL tools ---
+		if !isNativeOpenAI {
+			// Ensure root-level "description" (LiteLLM reads tool.description on every type)
+			if tool.Get("description").String() == "" {
+				desc := tool.Get("function.description").String()
+				if desc == "" {
+					desc = toolType + " tool"
+				}
+				newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.description", i), desc)
 			}
-			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.description", i), rootDesc)
+			// Ensure "function" stub exists (Codex Adapter reads tool.function.description blindly)
+			if !tool.Get("function").Exists() || tool.Get("function").Type != gjson.JSON {
+				toolName := tool.Get("name").String()
+				if toolName == "" {
+					toolName = toolType
+				}
+				desc := tool.Get("description").String()
+				if desc == "" {
+					desc = toolType + " tool"
+				}
+				newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.function", i), map[string]interface{}{
+					"name":        toolName,
+					"description": desc,
+					"parameters": map[string]interface{}{
+						"type":       "object",
+						"properties": map[string]interface{}{},
+					},
+				})
+			}
 		}
 
-		// Ensure every tool has a "function" stub (upstream Codex Adapter reads tool.function.description blindly)
-		if !tool.Get("function").Exists() || tool.Get("function").Type != gjson.JSON {
-			toolName := tool.Get("name").String()
-			if toolName == "" {
-				toolName = toolType
-			}
-			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.function", i), map[string]interface{}{
-				"name":        toolName,
-				"description": rootDesc,
-				"parameters": map[string]interface{}{
-					"type":       "object",
-					"properties": map[string]interface{}{},
-				},
-			})
-		}
-
-		// Non-function tools (web_search, custom, etc.): done after adding description + function stub
-		if toolType != "function" {
+		// Skip non-function tools for further processing
+		if !isFunction {
 			continue
 		}
 
-		// --- Function tool normalization below ---
+		// --- Function tool normalization (applies to all platforms) ---
 		hasFunction := tool.Get("function").Exists() && tool.Get("function").Type == gjson.JSON
 		hasRootName := tool.Get("name").Exists() && tool.Get("name").String() != ""
 
 		if hasFunction {
-			// Already has nested function object.
-			// OpenAI Responses API still requires root-level "name"; copy from function.name if missing.
+			// Ensure root-level "name" (required by OpenAI Responses API)
 			if !hasRootName {
 				fname := tool.Get("function.name").String()
 				if fname != "" {
@@ -1818,7 +1824,7 @@ func normalizeOpenAITools(body []byte) []byte {
 			continue
 		}
 
-		// Flattened tool: wrap name/description/parameters into a nested "function" object.
+		// Flattened tool: wrap name/description/parameters into a nested "function" object
 		name := tool.Get("name").String()
 		if name == "" {
 			name = "unknown"
@@ -1838,20 +1844,17 @@ func normalizeOpenAITools(body []byte) []byte {
 			}
 		}
 
-		functionObj := map[string]interface{}{
+		newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.function", i), map[string]interface{}{
 			"name":        name,
 			"description": desc,
 			"parameters":  parameters,
-		}
-		newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.function", i), functionObj)
+		})
 
-		// Ensure root-level "name" exists (required by Responses API)
 		if !hasRootName {
 			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.name", i), name)
 		}
 
-		// Clean up flattened fields that are now inside function{}
-		// Keep "description" at root (needed by LiteLLM), remove only "parameters"
+		// Clean up flattened "parameters" (now inside function{})
 		newBody, _ = sjson.DeleteBytes(newBody, fmt.Sprintf("tools.%d.parameters", i))
 	}
 	return newBody
