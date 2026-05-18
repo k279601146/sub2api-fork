@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -145,7 +147,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	【警告】此段调试代码如果启用：
 	- 会读取并缓存请求 Body。由于请求是非流式的，所以对请求端性能影响较小。
 	- 适合排查 Codex 客户端发送的 tools 定义是否包含错误或平铺的 schema 字段。
-	================================================================================
+	================================================================================*/
 	if strings.Contains(req.URL.String(), ":5580") {
 		var bodyBytes []byte
 		if req.Body != nil {
@@ -175,18 +177,18 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 			slog.Info("upstream_kiro_tools", "tools", string(toolsJSON))
 		}
 	}
-	*/
+	
 
 	resp, err := entry.client.Do(req)
 	if err != nil {
 		/*
 		================================================================================
 		【调试说明】以下代码用于记录 5580 端口请求失败的错误日志。
-		================================================================================
+		================================================================================*/
 		if strings.Contains(req.URL.String(), ":5580") {
 			slog.Error("upstream_kiro_error", "url", req.URL.String(), "error", err)
 		}
-		*/
+		
 		// 请求失败，立即减少计数
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -204,14 +206,14 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	2. 【数据截断】：io.LimitReader 只读取了前 4096 字节。如果大模型的响应过长，超出 4096 字节
 	   的部分会被彻底截断丢弃，导致前端显示不完整或 JSON 解析报错。
 	   
-	【何时启用】：仅在排查工具链初始调用协议（如 response.created 格式）或非流式交互报错时可临时开启。
-	================================================================================
+	【何时启用】：仅在排查工具链初始调用协议（如 response.created 格式）或非流式交互报错时可临时开启。	
+	================================================================================ */
 	if strings.Contains(req.URL.String(), ":5580") {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		slog.Info("upstream_kiro_status", "url", req.URL.String(), "status", resp.StatusCode, "body", string(body))
 	}
-	*/
+
 
 	// 如果上游返回了压缩内容，解压后再交给业务层
 	decompressResponseBody(resp)
