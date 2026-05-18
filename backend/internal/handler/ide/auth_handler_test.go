@@ -101,7 +101,7 @@ func TestTokenExchangesWebJWTForIDEToken(t *testing.T) {
 	require.Equal(t, 0, envelope.Code)
 	require.NotEmpty(t, envelope.Data.AccessToken)
 	require.Equal(t, "Bearer", envelope.Data.TokenType)
-	require.Equal(t, 3600, envelope.Data.ExpiresIn)
+	require.Equal(t, 2592000, envelope.Data.ExpiresIn)
 	require.Equal(t, defaultIDEClientID, envelope.Data.ClientID)
 	require.Equal(t, "1.2.3", envelope.Data.ClientVersion)
 	require.NotEmpty(t, envelope.Data.SessionID)

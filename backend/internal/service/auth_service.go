@@ -1131,6 +1131,39 @@ func (s *AuthService) GetAccessTokenExpiresIn() int {
 	return s.cfg.JWT.ExpireHour * 3600
 }
 
+// GenerateIDEToken 生成专门针对 IDE 客户端的 JWT，默认有效期为 30 天以优化登录体验
+func (s *AuthService) GenerateIDEToken(user *User) (string, error) {
+	now := time.Now()
+	// IDE 客户端为了体验提供长效 30 天有效期，亦可根据配置灵活决定
+	expiresAt := now.Add(30 * 24 * time.Hour)
+
+	claims := &JWTClaims{
+		UserID:       user.ID,
+		Email:        user.Email,
+		Role:         user.Role,
+		TokenVersion: resolvedTokenVersion(user),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(s.cfg.JWT.Secret))
+	if err != nil {
+		return "", fmt.Errorf("sign token: %w", err)
+	}
+
+	return tokenString, nil
+}
+
+// GetIDETokenExpiresIn 返回 IDE Token 的有效期（秒）
+func (s *AuthService) GetIDETokenExpiresIn() int {
+	return 30 * 24 * 3600 // 30天（以秒为单位）
+}
+
+
 // HashPassword 使用bcrypt加密密码
 func (s *AuthService) HashPassword(password string) (string, error) {
 	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

@@ -363,17 +363,17 @@ func (h *AuthHandler) Token(c *gin.Context) {
 		return
 	}
 
-	ideToken, err := h.authService.GenerateToken(user)
+	ideToken, err := h.authService.GenerateIDEToken(user)
 	if err != nil {
 		response.InternalError(c, "Failed to generate IDE token")
 		return
 	}
 
-	sessionID := h.recordIDESession(c.Request.Context(), user, ideToken, clientID, req.ClientVersion, req.Platform, req.DeviceID, h.authService.GetAccessTokenExpiresIn())
+	sessionID := h.recordIDESession(c.Request.Context(), user, ideToken, clientID, req.ClientVersion, req.Platform, req.DeviceID, h.authService.GetIDETokenExpiresIn())
 	response.Success(c, TokenResponse{
 		AccessToken:   ideToken,
 		TokenType:     ideTokenType,
-		ExpiresIn:     h.authService.GetAccessTokenExpiresIn(),
+		ExpiresIn:     h.authService.GetIDETokenExpiresIn(),
 		ClientID:      clientID,
 		ClientVersion: strings.TrimSpace(req.ClientVersion),
 		SessionID:     sessionID,
@@ -555,16 +555,16 @@ func (h *AuthHandler) tokenFromPKCECode(c *gin.Context, req TokenRequest, client
 		return
 	}
 
-	ideToken, err := h.authService.GenerateToken(user)
+	ideToken, err := h.authService.GenerateIDEToken(user)
 	if err != nil {
 		response.InternalError(c, "Failed to generate IDE token")
 		return
 	}
-	sessionID := h.recordIDESession(c.Request.Context(), user, ideToken, clientID, req.ClientVersion, req.Platform, req.DeviceID, h.authService.GetAccessTokenExpiresIn())
+	sessionID := h.recordIDESession(c.Request.Context(), user, ideToken, clientID, req.ClientVersion, req.Platform, req.DeviceID, h.authService.GetIDETokenExpiresIn())
 	response.Success(c, TokenResponse{
 		AccessToken:   ideToken,
 		TokenType:     ideTokenType,
-		ExpiresIn:     h.authService.GetAccessTokenExpiresIn(),
+		ExpiresIn:     h.authService.GetIDETokenExpiresIn(),
 		ClientID:      clientID,
 		ClientVersion: strings.TrimSpace(req.ClientVersion),
 		SessionID:     sessionID,
