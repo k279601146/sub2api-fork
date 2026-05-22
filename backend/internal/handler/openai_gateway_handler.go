@@ -330,9 +330,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(forwardBody, channelMapping.MappedModel)
 		}
-		
+
 		// Debug logging for upstream forward payload
-		reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", string(forwardBody)))
+		//reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", string(forwardBody)))
+		// 直接内联，一行搞定，长度1024可改
+		reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", func() string { s := string(forwardBody); if len(s) > 1024 { return s[:1024] + "..." }; return s }()))
 
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
