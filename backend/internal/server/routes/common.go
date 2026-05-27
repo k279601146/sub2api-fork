@@ -6,14 +6,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterCommonRoutes 注册通用路由（健康检查、状态等）
+// RegisterCommonRoutes 注册通用路由（健康检查、状态等）。
 func RegisterCommonRoutes(r *gin.Engine) {
-	// 健康检查
+	// 健康检查同时暴露客户端引擎元信息，便于桌面端和运维排障。
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"engine": buildIDEEngineHealthMetadata(),
+		})
 	})
 
-	// Claude Code 遥测日志（忽略，直接返回200）
+	// Claude Code 遥测日志（忽略，直接返回 200）。
 	r.POST("/api/event_logging/batch", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

@@ -22,20 +22,26 @@ import (
 )
 
 type ideReleaseBinary struct {
-	URL    string `json:"url"`
-	SHA256 string `json:"sha256"`
-	Size   int64  `json:"size,omitempty"`
+	URL       string `json:"url"`
+	SHA256    string `json:"sha256"`
+	Signature string `json:"signature,omitempty"`
+	Size      int64  `json:"size,omitempty"`
 }
 
 type ideReleaseRecord struct {
-	Kind          string                      `json:"kind"`
-	Version       string                      `json:"version"`
-	LatestVersion string                      `json:"latest_version"`
-	MinAppVersion string                      `json:"min_app_version,omitempty"`
-	Binaries      map[string]ideReleaseBinary `json:"binaries,omitempty"`
-	ReleaseNotes  string                      `json:"release_notes,omitempty"`
-	IsMandatory   bool                        `json:"is_mandatory"`
-	PublishedAt   string                      `json:"published_at"`
+	Kind            string                      `json:"kind"`
+	Version         string                      `json:"version"`
+	LatestVersion   string                      `json:"latest_version"`
+	MinAppVersion   string                      `json:"min_app_version,omitempty"`
+	Binaries        map[string]ideReleaseBinary `json:"binaries,omitempty"`
+	ReleaseNotes    string                      `json:"release_notes,omitempty"`
+	IsMandatory     bool                        `json:"is_mandatory"`
+	PublishedAt     string                      `json:"published_at"`
+	EngineName      string                      `json:"engineName,omitempty"`
+	Upstream        string                      `json:"upstream,omitempty"`
+	UpstreamVersion string                      `json:"upstreamVersion,omitempty"`
+	ProtocolVersion string                      `json:"protocolVersion,omitempty"`
+	Build           string                      `json:"build,omitempty"`
 }
 
 var ideReleaseMemory = struct {
@@ -43,6 +49,24 @@ var ideReleaseMemory = struct {
 	releases map[string]ideReleaseRecord
 }{
 	releases: map[string]ideReleaseRecord{},
+}
+
+const (
+	defaultIDEEngineName            = "ai-engine"
+	defaultIDEEngineUpstream        = "openai/codex"
+	defaultIDEEngineProtocolVersion = "app-server-v1"
+)
+
+func buildIDEEngineHealthMetadata() gin.H {
+	release := releaseFromEnv("engine")
+	enrichEngineReleaseMetadata(&release)
+	return gin.H{
+		"engineName":      release.EngineName,
+		"upstream":        release.Upstream,
+		"upstreamVersion": release.UpstreamVersion,
+		"protocolVersion": release.ProtocolVersion,
+		"build":           release.Build,
+	}
 }
 
 // RegisterIDERoutes registers desktop IDE integration endpoints at /ide/*.
@@ -144,6 +168,7 @@ func ideVersionResponse(kind string, entClient *dbent.Client) gin.HandlerFunc {
 
 		if release, ok := getPublishedIDERelease(c.Request.Context(), entClient, kind); ok {
 			binary := releaseBinaryForPlatform(release, platformKey)
+			enrichEngineReleaseMetadata(&release)
 			c.JSON(http.StatusOK, gin.H{
 				"code":    0,
 				"message": "success",
@@ -159,12 +184,19 @@ func ideVersionResponse(kind string, entClient *dbent.Client) gin.HandlerFunc {
 					"download_url":    binary.URL,
 					"manifest_url":    "",
 					"sha256":          binary.SHA256,
+					"signature":       binary.Signature,
 					"release_notes":   release.ReleaseNotes,
 					"binaries":        release.Binaries,
+					"engineName":      release.EngineName,
+					"upstream":        release.Upstream,
+					"upstreamVersion": release.UpstreamVersion,
+					"protocolVersion": release.ProtocolVersion,
+					"build":           release.Build,
 					"download": gin.H{
-						"url":    binary.URL,
-						"sha256": binary.SHA256,
-						"size":   nullableReleaseSize(binary.Size),
+						"url":       binary.URL,
+						"sha256":    binary.SHA256,
+						"signature": binary.Signature,
+						"size":      nullableReleaseSize(binary.Size),
 					},
 				},
 			})
@@ -175,11 +207,24 @@ func ideVersionResponse(kind string, entClient *dbent.Client) gin.HandlerFunc {
 		downloadURL := resolveIDEReleaseEnv(prefix, platformKey, "DOWNLOAD_URL")
 		manifestURL := resolveIDEReleaseEnv(prefix, platformKey, "MANIFEST_URL")
 		sha256 := resolveIDEReleaseEnv(prefix, platformKey, "SHA256")
+		signature := resolveIDEReleaseEnv(prefix, platformKey, "SIGNATURE")
 		size := parseOptionalInt64(resolveIDEReleaseEnv(prefix, platformKey, "SIZE"))
 		minAppVersion := strings.TrimSpace(os.Getenv(prefix + "_MIN_APP_VERSION"))
 		mandatory := parseBoolEnv(prefix + "_MANDATORY")
 		publishedAt := strings.TrimSpace(os.Getenv(prefix + "_PUBLISHED_AT"))
 		releaseNotes := strings.TrimSpace(os.Getenv(prefix + "_RELEASE_NOTES"))
+
+		release := ideReleaseRecord{
+			Kind:            kind,
+			Version:         latestVersion,
+			LatestVersion:   latestVersion,
+			MinAppVersion:   minAppVersion,
+			ReleaseNotes:    releaseNotes,
+			IsMandatory:     mandatory,
+			PublishedAt:     publishedAt,
+			ProtocolVersion: strings.TrimSpace(os.Getenv(prefix + "_PROTOCOL_VERSION")),
+		}
+		enrichEngineReleaseMetadata(&release)
 
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
@@ -196,11 +241,18 @@ func ideVersionResponse(kind string, entClient *dbent.Client) gin.HandlerFunc {
 				"download_url":    downloadURL,
 				"manifest_url":    manifestURL,
 				"sha256":          sha256,
+				"signature":       signature,
 				"release_notes":   releaseNotes,
+				"engineName":      release.EngineName,
+				"upstream":        release.Upstream,
+				"upstreamVersion": release.UpstreamVersion,
+				"protocolVersion": release.ProtocolVersion,
+				"build":           release.Build,
 				"download": gin.H{
-					"url":    downloadURL,
-					"sha256": sha256,
-					"size":   size,
+					"url":       downloadURL,
+					"sha256":    sha256,
+					"signature": signature,
+					"size":      size,
 				},
 			},
 		})
@@ -233,13 +285,18 @@ func ideAdminListReleases(entClient *dbent.Client) gin.HandlerFunc {
 
 func ideAdminPublishRelease(entClient *dbent.Client) gin.HandlerFunc {
 	type publishReleaseRequest struct {
-		Kind          string                      `json:"kind"`
-		Type          string                      `json:"type"`
-		Version       string                      `json:"version"`
-		MinAppVersion string                      `json:"min_app_version"`
-		Binaries      map[string]ideReleaseBinary `json:"binaries"`
-		ReleaseNotes  string                      `json:"release_notes"`
-		IsMandatory   bool                        `json:"is_mandatory"`
+		Kind            string                      `json:"kind"`
+		Type            string                      `json:"type"`
+		Version         string                      `json:"version"`
+		MinAppVersion   string                      `json:"min_app_version"`
+		Binaries        map[string]ideReleaseBinary `json:"binaries"`
+		ReleaseNotes    string                      `json:"release_notes"`
+		IsMandatory     bool                        `json:"is_mandatory"`
+		EngineName      string                      `json:"engineName"`
+		Upstream        string                      `json:"upstream"`
+		UpstreamVersion string                      `json:"upstreamVersion"`
+		ProtocolVersion string                      `json:"protocolVersion"`
+		Build           string                      `json:"build"`
 	}
 
 	return func(c *gin.Context) {
@@ -268,15 +325,21 @@ func ideAdminPublishRelease(entClient *dbent.Client) gin.HandlerFunc {
 		}
 
 		release := ideReleaseRecord{
-			Kind:          kind,
-			Version:       version,
-			LatestVersion: version,
-			MinAppVersion: strings.TrimSpace(req.MinAppVersion),
-			Binaries:      binaries,
-			ReleaseNotes:  strings.TrimSpace(req.ReleaseNotes),
-			IsMandatory:   req.IsMandatory,
-			PublishedAt:   time.Now().UTC().Format(time.RFC3339),
+			Kind:            kind,
+			Version:         version,
+			LatestVersion:   version,
+			MinAppVersion:   strings.TrimSpace(req.MinAppVersion),
+			Binaries:        binaries,
+			ReleaseNotes:    strings.TrimSpace(req.ReleaseNotes),
+			IsMandatory:     req.IsMandatory,
+			PublishedAt:     time.Now().UTC().Format(time.RFC3339),
+			EngineName:      strings.TrimSpace(req.EngineName),
+			Upstream:        strings.TrimSpace(req.Upstream),
+			UpstreamVersion: strings.TrimSpace(req.UpstreamVersion),
+			ProtocolVersion: strings.TrimSpace(req.ProtocolVersion),
+			Build:           strings.TrimSpace(req.Build),
 		}
+		enrichEngineReleaseMetadata(&release)
 		if entClient != nil {
 			publishedAt := time.Now().UTC()
 			if _, err := entClient.IDERelease.Update().
@@ -382,25 +445,33 @@ func releaseFromEnv(kind string) ideReleaseRecord {
 	binaries := map[string]ideReleaseBinary{}
 	for _, platformKey := range []string{"win32-x64", "darwin-x64", "darwin-arm64", "linux-x64"} {
 		binary := ideReleaseBinary{
-			URL:    resolveIDEReleaseEnv(prefix, platformKey, "DOWNLOAD_URL"),
-			SHA256: resolveIDEReleaseEnv(prefix, platformKey, "SHA256"),
-			Size:   parseInt64OrZero(resolveIDEReleaseEnv(prefix, platformKey, "SIZE")),
+			URL:       resolveIDEReleaseEnv(prefix, platformKey, "DOWNLOAD_URL"),
+			SHA256:    resolveIDEReleaseEnv(prefix, platformKey, "SHA256"),
+			Signature: resolveIDEReleaseEnv(prefix, platformKey, "SIGNATURE"),
+			Size:      parseInt64OrZero(resolveIDEReleaseEnv(prefix, platformKey, "SIZE")),
 		}
-		if binary.URL != "" || binary.SHA256 != "" || binary.Size > 0 {
+		if binary.URL != "" || binary.SHA256 != "" || binary.Signature != "" || binary.Size > 0 {
 			binaries[platformKey] = binary
 		}
 	}
 	latestVersion := strings.TrimSpace(os.Getenv(prefix + "_LATEST_VERSION"))
-	return ideReleaseRecord{
-		Kind:          kind,
-		Version:       latestVersion,
-		LatestVersion: latestVersion,
-		MinAppVersion: strings.TrimSpace(os.Getenv(prefix + "_MIN_APP_VERSION")),
-		Binaries:      binaries,
-		ReleaseNotes:  strings.TrimSpace(os.Getenv(prefix + "_RELEASE_NOTES")),
-		IsMandatory:   parseBoolEnv(prefix + "_MANDATORY"),
-		PublishedAt:   strings.TrimSpace(os.Getenv(prefix + "_PUBLISHED_AT")),
+	release := ideReleaseRecord{
+		Kind:            kind,
+		Version:         latestVersion,
+		LatestVersion:   latestVersion,
+		MinAppVersion:   strings.TrimSpace(os.Getenv(prefix + "_MIN_APP_VERSION")),
+		Binaries:        binaries,
+		ReleaseNotes:    strings.TrimSpace(os.Getenv(prefix + "_RELEASE_NOTES")),
+		IsMandatory:     parseBoolEnv(prefix + "_MANDATORY"),
+		PublishedAt:     strings.TrimSpace(os.Getenv(prefix + "_PUBLISHED_AT")),
+		EngineName:      strings.TrimSpace(os.Getenv(prefix + "_ENGINE_NAME")),
+		Upstream:        strings.TrimSpace(os.Getenv(prefix + "_UPSTREAM")),
+		UpstreamVersion: strings.TrimSpace(os.Getenv(prefix + "_UPSTREAM_VERSION")),
+		ProtocolVersion: strings.TrimSpace(os.Getenv(prefix + "_PROTOCOL_VERSION")),
+		Build:           strings.TrimSpace(os.Getenv(prefix + "_BUILD")),
 	}
+	enrichEngineReleaseMetadata(&release)
+	return release
 }
 
 func releaseBinaryForPlatform(release ideReleaseRecord, platformKey string) ideReleaseBinary {
@@ -433,7 +504,8 @@ func normalizeReleaseBinaries(input map[string]ideReleaseBinary) map[string]ideR
 		}
 		binary.URL = strings.TrimSpace(binary.URL)
 		binary.SHA256 = strings.TrimSpace(binary.SHA256)
-		if binary.URL == "" && binary.SHA256 == "" && binary.Size <= 0 {
+		binary.Signature = strings.TrimSpace(binary.Signature)
+		if binary.URL == "" && binary.SHA256 == "" && binary.Signature == "" && binary.Size <= 0 {
 			continue
 		}
 		output[platformKey] = binary
@@ -445,9 +517,10 @@ func releaseBinariesToJSON(input map[string]ideReleaseBinary) map[string]map[str
 	output := map[string]map[string]any{}
 	for key, binary := range input {
 		output[key] = map[string]any{
-			"url":    binary.URL,
-			"sha256": binary.SHA256,
-			"size":   binary.Size,
+			"url":       binary.URL,
+			"sha256":    binary.SHA256,
+			"signature": binary.Signature,
+			"size":      binary.Size,
 		}
 	}
 	return output
@@ -457,9 +530,10 @@ func releaseBinariesFromJSON(input map[string]map[string]any) map[string]ideRele
 	output := map[string]ideReleaseBinary{}
 	for key, value := range input {
 		output[key] = ideReleaseBinary{
-			URL:    stringFromJSONMap(value, "url"),
-			SHA256: stringFromJSONMap(value, "sha256"),
-			Size:   int64FromJSONMap(value, "size"),
+			URL:       stringFromJSONMap(value, "url"),
+			SHA256:    stringFromJSONMap(value, "sha256"),
+			Signature: stringFromJSONMap(value, "signature"),
+			Size:      int64FromJSONMap(value, "size"),
 		}
 	}
 	return output
@@ -470,7 +544,7 @@ func ideReleaseRecordFromEnt(row *dbent.IDERelease) ideReleaseRecord {
 	if !row.PublishedAt.IsZero() {
 		publishedAt = row.PublishedAt.UTC().Format(time.RFC3339)
 	}
-	return ideReleaseRecord{
+	release := ideReleaseRecord{
 		Kind:          row.Kind,
 		Version:       row.Version,
 		LatestVersion: row.Version,
@@ -480,6 +554,38 @@ func ideReleaseRecordFromEnt(row *dbent.IDERelease) ideReleaseRecord {
 		IsMandatory:   row.IsMandatory,
 		PublishedAt:   publishedAt,
 	}
+	enrichEngineReleaseMetadata(&release)
+	return release
+}
+
+func enrichEngineReleaseMetadata(release *ideReleaseRecord) {
+	if release.Kind != "engine" {
+		return
+	}
+	if strings.TrimSpace(release.EngineName) == "" {
+		release.EngineName = firstNonEmpty(os.Getenv("IDE_ENGINE_NAME"), defaultIDEEngineName)
+	}
+	if strings.TrimSpace(release.Upstream) == "" {
+		release.Upstream = firstNonEmpty(os.Getenv("IDE_ENGINE_UPSTREAM"), defaultIDEEngineUpstream)
+	}
+	if strings.TrimSpace(release.UpstreamVersion) == "" {
+		release.UpstreamVersion = firstNonEmpty(os.Getenv("IDE_ENGINE_UPSTREAM_VERSION"), release.Version, release.LatestVersion)
+	}
+	if strings.TrimSpace(release.ProtocolVersion) == "" {
+		release.ProtocolVersion = firstNonEmpty(os.Getenv("IDE_ENGINE_PROTOCOL_VERSION"), defaultIDEEngineProtocolVersion)
+	}
+	if strings.TrimSpace(release.Build) == "" {
+		release.Build = firstNonEmpty(os.Getenv("IDE_ENGINE_BUILD"), release.Version, release.LatestVersion)
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func stringFromJSONMap(values map[string]any, key string) string {

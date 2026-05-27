@@ -92,9 +92,12 @@ func TestIDEVersionResponseIncludesUpdaterFields(t *testing.T) {
 	t.Setenv("IDE_ENGINE_LATEST_VERSION", "2.0.0")
 	t.Setenv("IDE_ENGINE_WIN32_X64_DOWNLOAD_URL", "https://cdn.example.com/engine.exe")
 	t.Setenv("IDE_ENGINE_WIN32_X64_SHA256", "abc123")
+	t.Setenv("IDE_ENGINE_WIN32_X64_SIGNATURE", "sig123")
 	t.Setenv("IDE_ENGINE_WIN32_X64_SIZE", "12345")
 	t.Setenv("IDE_ENGINE_MIN_APP_VERSION", "1.4.0")
 	t.Setenv("IDE_ENGINE_MANDATORY", "true")
+	t.Setenv("IDE_ENGINE_PROTOCOL_VERSION", "app-server-v1")
+	t.Setenv("IDE_ENGINE_UPSTREAM", "openai/codex")
 
 	router := gin.New()
 	router.GET("/ide/api/version/engine", ideVersionResponse("engine", nil))
@@ -111,7 +114,31 @@ func TestIDEVersionResponseIncludesUpdaterFields(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"min_app_version":"1.4.0"`)
 	require.Contains(t, recorder.Body.String(), `"url":"https://cdn.example.com/engine.exe"`)
 	require.Contains(t, recorder.Body.String(), `"sha256":"abc123"`)
+	require.Contains(t, recorder.Body.String(), `"signature":"sig123"`)
 	require.Contains(t, recorder.Body.String(), `"size":12345`)
+	require.Contains(t, recorder.Body.String(), `"engineName":"ai-engine"`)
+	require.Contains(t, recorder.Body.String(), `"upstream":"openai/codex"`)
+	require.Contains(t, recorder.Body.String(), `"protocolVersion":"app-server-v1"`)
+}
+
+func TestCommonHealthIncludesEngineMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("IDE_ENGINE_LATEST_VERSION", "2.0.0")
+	t.Setenv("IDE_ENGINE_BUILD", "build-20260526")
+	router := gin.New()
+	RegisterCommonRoutes(router)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"status":"ok"`)
+	require.Contains(t, recorder.Body.String(), `"engineName":"ai-engine"`)
+	require.Contains(t, recorder.Body.String(), `"upstream":"openai/codex"`)
+	require.Contains(t, recorder.Body.String(), `"upstreamVersion":"2.0.0"`)
+	require.Contains(t, recorder.Body.String(), `"protocolVersion":"app-server-v1"`)
+	require.Contains(t, recorder.Body.String(), `"build":"build-20260526"`)
 }
 
 func TestIDEAdminPublishedReleaseFeedsVersionEndpoint(t *testing.T) {
