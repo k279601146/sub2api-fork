@@ -1508,6 +1508,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	settings.UsageWindowLimitUnits = normalizeUsageLimitUnits(settings.UsageWindowLimitUnits, baseUsageWindowLimit)
+	settings.UsageWeeklyLimitUnits = normalizeUsageLimitUnits(settings.UsageWeeklyLimitUnits, baseUsageWeeklyLimit)
+	updates[SettingKeyUsageWindowLimitUnits] = strconv.FormatFloat(settings.UsageWindowLimitUnits, 'f', 8, 64)
+	updates[SettingKeyUsageWeeklyLimitUnits] = strconv.FormatFloat(settings.UsageWeeklyLimitUnits, 'f', 8, 64)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
@@ -2085,6 +2089,42 @@ func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
 	return 0
 }
 
+type UsageLimitSettings struct {
+	WindowLimitUnits float64
+	WeeklyLimitUnits float64
+}
+
+func (s *SettingService) GetUsageLimitSettings(ctx context.Context) UsageLimitSettings {
+	if s == nil || s.settingRepo == nil {
+		return DefaultUsageLimitSettings()
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyUsageWindowLimitUnits,
+		SettingKeyUsageWeeklyLimitUnits,
+	})
+	if err != nil {
+		return DefaultUsageLimitSettings()
+	}
+	return UsageLimitSettings{
+		WindowLimitUnits: parsePositiveUsageLimit(values[SettingKeyUsageWindowLimitUnits], baseUsageWindowLimit),
+		WeeklyLimitUnits: parsePositiveUsageLimit(values[SettingKeyUsageWeeklyLimitUnits], baseUsageWeeklyLimit),
+	}
+}
+
+func DefaultUsageLimitSettings() UsageLimitSettings {
+	return UsageLimitSettings{
+		WindowLimitUnits: baseUsageWindowLimit,
+		WeeklyLimitUnits: baseUsageWeeklyLimit,
+	}
+}
+
+func normalizeUsageLimitUnits(value, fallback float64) float64 {
+	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return fallback
+	}
+	return value
+}
+
 // GetDefaultSubscriptions 获取新用户默认订阅配置列表。
 func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultSubscriptionSetting {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultSubscriptions)
@@ -2283,6 +2323,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyUsageWindowLimitUnits:                    strconv.FormatFloat(baseUsageWindowLimit, 'f', 8, 64),
+		SettingKeyUsageWeeklyLimitUnits:                    strconv.FormatFloat(baseUsageWeeklyLimit, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                      strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:               strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:              strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -2440,6 +2482,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
+	result.UsageWindowLimitUnits = parsePositiveUsageLimit(settings[SettingKeyUsageWindowLimitUnits], baseUsageWindowLimit)
+	result.UsageWeeklyLimitUnits = parsePositiveUsageLimit(settings[SettingKeyUsageWeeklyLimitUnits], baseUsageWeeklyLimit)
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {

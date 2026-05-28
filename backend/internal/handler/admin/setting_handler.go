@@ -199,6 +199,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		UsageWindowLimitUnits:                  settings.UsageWindowLimitUnits,
+		UsageWeeklyLimitUnits:                  settings.UsageWeeklyLimitUnits,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
@@ -446,6 +448,8 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
+	UsageWindowLimitUnits                    *float64                          `json:"usage_window_limit_units"`
+	UsageWeeklyLimitUnits                    *float64                          `json:"usage_weekly_limit_units"`
 	AffiliateRebateRate                      *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours               *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays              *int                              `json:"affiliate_rebate_duration_days"`
@@ -599,6 +603,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+	}
+	usageWindowLimitUnits := positiveFloatValueOrDefault(req.UsageWindowLimitUnits, previousSettings.UsageWindowLimitUnits)
+	if usageWindowLimitUnits <= 0 {
+		usageWindowLimitUnits = service.DefaultUsageLimitSettings().WindowLimitUnits
+	}
+	usageWeeklyLimitUnits := positiveFloatValueOrDefault(req.UsageWeeklyLimitUnits, previousSettings.UsageWeeklyLimitUnits)
+	if usageWeeklyLimitUnits <= 0 {
+		usageWeeklyLimitUnits = service.DefaultUsageLimitSettings().WeeklyLimitUnits
 	}
 	affiliateRebateRate := previousSettings.AffiliateRebateRate
 	if req.AffiliateRebateRate != nil {
@@ -1350,6 +1362,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
+		UsageWindowLimitUnits:            usageWindowLimitUnits,
+		UsageWeeklyLimitUnits:            usageWeeklyLimitUnits,
 		AffiliateRebateRate:              affiliateRebateRate,
 		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
@@ -1722,6 +1736,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		UsageWindowLimitUnits:                  updatedSettings.UsageWindowLimitUnits,
+		UsageWeeklyLimitUnits:                  updatedSettings.UsageWeeklyLimitUnits,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
@@ -2053,6 +2069,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
+	if before.UsageWindowLimitUnits != after.UsageWindowLimitUnits {
+		changed = append(changed, "usage_window_limit_units")
+	}
+	if before.UsageWeeklyLimitUnits != after.UsageWeeklyLimitUnits {
+		changed = append(changed, "usage_weekly_limit_units")
+	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
 	}
@@ -2272,6 +2294,13 @@ func float64ValueOrDefault(value *float64, fallback float64) float64 {
 
 func intValueOrDefault(value *int, fallback int) int {
 	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func positiveFloatValueOrDefault(value *float64, fallback float64) float64 {
+	if value == nil || *value <= 0 {
 		return fallback
 	}
 	return *value

@@ -224,6 +224,19 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
+func TestSettingService_UpdateSettings_UsageLimitUnits(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		UsageWindowLimitUnits: 250,
+		UsageWeeklyLimitUnits: 1500,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "250.00000000", repo.updates[SettingKeyUsageWindowLimitUnits])
+	require.Equal(t, "1500.00000000", repo.updates[SettingKeyUsageWeeklyLimitUnits])
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

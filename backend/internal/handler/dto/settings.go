@@ -124,6 +124,8 @@ type SystemSettings struct {
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
+	UsageWindowLimitUnits        float64                      `json:"usage_window_limit_units"`
+	UsageWeeklyLimitUnits        float64                      `json:"usage_weekly_limit_units"`
 	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`

@@ -82,9 +82,9 @@ func apiKeyOrJWTAuth(
 			return
 		}
 
-		logger.L().Info("jwt_auth_success: resolved IDE gateway key", 
-			zap.Int64("user_id", user.ID), 
-			zap.String("api_key", apiKey.Key[:8]+"..."), 
+		logger.L().Info("jwt_auth_success: resolved IDE gateway key",
+			zap.Int64("user_id", user.ID),
+			zap.String("api_key", apiKey.Key[:8]+"..."),
 			zap.Any("group_id", apiKey.GroupID))
 
 		c.Request.Header.Set("Authorization", "Bearer "+apiKey.Key)
@@ -104,6 +104,15 @@ func looksLikeJWT(token string) bool {
 //   - 计费执行（Billing Enforcement）：过期/配额/订阅/余额检查 —— skipBilling 时整块跳过
 //
 // /v1/usage 端点只需鉴权，不需要计费执行（允许过期/配额耗尽的 Key 查询自身用量）。
+func isGatewayReadOnlyEndpoint(path string) bool {
+	switch path {
+	case "/v1/usage", "/v1/models":
+		return true
+	default:
+		return false
+	}
+}
+
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
@@ -206,7 +215,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// ── 5. 加载订阅（订阅模式时始终加载） ───────────────────────
 
 		// skipBilling: /v1/usage 只需鉴权，跳过所有计费执行
-		skipBilling := c.Request.URL.Path == "/v1/usage"
+		skipBilling := isGatewayReadOnlyEndpoint(c.Request.URL.Path)
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -273,8 +282,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
 				}
 			} else {
-				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKey.User.Balance <= 0 {
+				// IDE JWT uses product-facing units windows; wallet balance is not a hard gate there.
+				if c.GetString("auth_type") != "ide_jwt" && apiKey.User.Balance <= 0 {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}

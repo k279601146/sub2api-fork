@@ -747,6 +747,8 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
+					"usage_window_limit_units": 100,
+					"usage_weekly_limit_units": 700,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -963,6 +965,8 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
+					"usage_window_limit_units": 100,
+					"usage_weekly_limit_units": 700,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -2384,6 +2388,11 @@ func (r *stubUsageLogRepo) GetAccountUsageStats(ctx context.Context, accountID i
 func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (r *stubUsageLogRepo) GetUsageUnitsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (float64, error) {
+	return 0, nil
+}
+
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, errors.New("not implemented")
 }

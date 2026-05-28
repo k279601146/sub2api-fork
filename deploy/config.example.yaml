@@ -1091,3 +1091,11 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
+
+# =============================================================================
+# Dev2 Internal Integration
+# =============================================================================
+dev2:
+  # Shared secret used by dev2 API to call /internal/dev2/* endpoints.
+  # Must match dev2 API SUB2API_INTERNAL_SECRET.
+  internal_secret: ""

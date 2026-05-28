@@ -91,6 +91,11 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Dev2                    Dev2Config                    `mapstructure:"dev2"`
+}
+
+type Dev2Config struct {
+	InternalSecret string `mapstructure:"internal_secret"`
 }
 
 type LogConfig struct {
@@ -1243,17 +1248,17 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 
-	// Add config paths in priority order
-	// 1. DATA_DIR environment variable (highest priority)
+	// Add config paths in priority order.
+	// 1. DATA_DIR environment variable (explicit override)
 	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
 		viper.AddConfigPath(dataDir)
 	}
-	// 2. Docker data directory
-	viper.AddConfigPath("/app/data")
-	// 3. Current directory
+	// 2. Current directory (local development, e.g. backend/config.yaml)
 	viper.AddConfigPath(".")
-	// 4. Config subdirectory
+	// 3. Config subdirectory
 	viper.AddConfigPath("./config")
+	// 4. Docker data directory
+	viper.AddConfigPath("/app/data")
 	// 5. System config directory
 	viper.AddConfigPath("/etc/sub2api")
 
@@ -1657,6 +1662,8 @@ func setDefaults() {
 	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
+	viper.SetDefault("dev2.internal_secret", "")
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
@@ -2659,13 +2666,17 @@ func generateJWTSecret(byteLength int) (string, error) {
 // GetServerAddress returns the server address (host:port) from config file or environment variable.
 // This is a lightweight function that can be used before full config validation,
 // such as during setup wizard startup.
-// Priority: config.yaml > environment variables > defaults
+// Priority: DATA_DIR config.yaml > current directory config.yaml > /app/data config.yaml > environment variables > defaults
 func GetServerAddress() string {
 	v := viper.New()
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
+	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
+		v.AddConfigPath(dataDir)
+	}
 	v.AddConfigPath(".")
 	v.AddConfigPath("./config")
+	v.AddConfigPath("/app/data")
 	v.AddConfigPath("/etc/sub2api")
 
 	// Support SERVER_HOST and SERVER_PORT environment variables

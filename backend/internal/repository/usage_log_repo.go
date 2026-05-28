@@ -3442,6 +3442,71 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 	return stats, nil
 }
 
+// GetUsageUnitsWithFilters returns product-facing quota units for matching usage logs.
+// Each request is evaluated independently; requests below 1 unit are free and
+// do not accumulate into billable usage.
+func (r *usageLogRepository) GetUsageUnitsWithFilters(ctx context.Context, filters UsageLogFilters) (float64, error) {
+	conditions := make([]string, 0, 9)
+	args := make([]any, 0, 9)
+
+	if filters.UserID > 0 {
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", len(args)+1))
+		args = append(args, filters.UserID)
+	}
+	if filters.APIKeyID > 0 {
+		conditions = append(conditions, fmt.Sprintf("api_key_id = $%d", len(args)+1))
+		args = append(args, filters.APIKeyID)
+	}
+	if filters.AccountID > 0 {
+		conditions = append(conditions, fmt.Sprintf("account_id = $%d", len(args)+1))
+		args = append(args, filters.AccountID)
+	}
+	if filters.GroupID > 0 {
+		conditions = append(conditions, fmt.Sprintf("group_id = $%d", len(args)+1))
+		args = append(args, filters.GroupID)
+	}
+	conditions, args = appendRawUsageLogModelWhereCondition(conditions, args, filters.Model)
+	conditions, args = appendRequestTypeOrStreamWhereCondition(conditions, args, filters.RequestType, filters.Stream)
+	if filters.BillingType != nil {
+		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
+		args = append(args, int16(*filters.BillingType))
+	}
+	if filters.BillingMode != "" {
+		conditions = append(conditions, fmt.Sprintf("billing_mode = $%d", len(args)+1))
+		args = append(args, filters.BillingMode)
+	}
+	if filters.StartTime != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
+		args = append(args, *filters.StartTime)
+	}
+	if filters.EndTime != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
+		args = append(args, *filters.EndTime)
+	}
+
+	query := fmt.Sprintf(`
+		WITH per_request AS (
+			SELECT
+				(
+					COALESCE(input_tokens, 0)::float8 / 1000
+					+ COALESCE(cache_creation_tokens, 0)::float8 / 1000
+					+ COALESCE(cache_read_tokens, 0)::float8 / 1000
+					+ COALESCE(output_tokens, 0)::float8 / 1000 * 2
+				) AS raw_units
+			FROM usage_logs
+			%s
+		)
+		SELECT COALESCE(SUM(CASE WHEN raw_units >= 1 THEN raw_units ELSE 0 END), 0)
+		FROM per_request
+	`, buildWhere(conditions))
+
+	var units float64
+	if err := scanSingleRow(ctx, r.sql, query, args, &units); err != nil {
+		return 0, err
+	}
+	return units, nil
+}
+
 // AccountUsageHistory represents daily usage history for an account
 type AccountUsageHistory = usagestats.AccountUsageHistory
 

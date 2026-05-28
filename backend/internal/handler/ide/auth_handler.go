@@ -329,6 +329,56 @@ func (h *AuthHandler) Approve(c *gin.Context) {
 	})
 }
 
+// AuthorizeDev2User completes the browser consent side of the IDE PKCE flow
+// after dev2 has authenticated the user and collected consent.
+func (h *AuthHandler) AuthorizeDev2User(ctx context.Context, user *service.User, codeChallenge, redirectURI, clientID string) (ApproveResponse, error) {
+	codeChallenge = strings.TrimSpace(codeChallenge)
+	redirectURI = strings.TrimSpace(redirectURI)
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		clientID = defaultIDEClientID
+	}
+	if user == nil || user.ID <= 0 {
+		return ApproveResponse{}, infraerrors.Unauthorized("IDE_USER_NOT_FOUND", "user not found")
+	}
+	if !user.IsActive() {
+		return ApproveResponse{}, service.ErrUserNotActive
+	}
+	if codeChallenge == "" || redirectURI == "" {
+		return ApproveResponse{}, infraerrors.BadRequest("IDE_AUTH_REQUEST_INVALID", "code_challenge and redirect_uri are required")
+	}
+	if !isAllowedRedirectURI(redirectURI) {
+		return ApproveResponse{}, infraerrors.BadRequest("IDE_REDIRECT_URI_INVALID", "invalid redirect_uri")
+	}
+
+	code, err := secureRandomToken(32)
+	if err != nil {
+		return ApproveResponse{}, err
+	}
+	state, err := secureRandomToken(18)
+	if err != nil {
+		return ApproveResponse{}, err
+	}
+	expiresAt := time.Now().UTC().Add(ideAuthCodeTTL)
+	ideAuthMemory.Lock()
+	cleanupIDEAuthMemoryLocked(time.Now().UTC())
+	ideAuthMemory.codes[code] = ideAuthCodeRecord{
+		UserID:        user.ID,
+		CodeChallenge: codeChallenge,
+		ExpiresAt:     expiresAt,
+	}
+	ideAuthMemory.Unlock()
+
+	redirectURL, err := appendQuery(redirectURI, map[string]string{
+		"code":  code,
+		"state": state,
+	})
+	if err != nil {
+		return ApproveResponse{}, err
+	}
+	return ApproveResponse{RedirectURL: redirectURL, ExpiresAt: expiresAt}, nil
+}
+
 // Token exchanges an already-authenticated web JWT for an IDE JWT.
 //
 // This is the first desktop bridge for local/commercial IDE integration. The

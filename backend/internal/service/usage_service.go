@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -14,6 +17,15 @@ import (
 
 var (
 	ErrUsageLogNotFound = infraerrors.NotFound("USAGE_LOG_NOT_FOUND", "usage log not found")
+)
+
+const (
+	usageWindowHours      = 5
+	baseUsageWindowLimit  = 100.0
+	baseUsageWeeklyLimit  = 700.0
+	defaultUsagePlan      = "free"
+	defaultUsagePlanType  = "free"
+	usageWindowTimeLayout = time.RFC3339
 )
 
 // CreateUsageLogRequest 创建使用日志请求
@@ -58,15 +70,21 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	settingRepo          SettingRepository
 }
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
+func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator, settingRepo ...SettingRepository) *UsageService {
+	var settings SettingRepository
+	if len(settingRepo) > 0 {
+		settings = settingRepo[0]
+	}
 	return &UsageService{
 		usageRepo:            usageRepo,
 		userRepo:             userRepo,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
+		settingRepo:          settings,
 	}
 }
 
@@ -285,6 +303,9 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 	if err != nil {
 		return nil, fmt.Errorf("get user dashboard stats: %w", err)
 	}
+	if err := s.populateUserUsageWindows(ctx, stats, userID); err != nil {
+		return nil, err
+	}
 	return stats, nil
 }
 
@@ -294,7 +315,133 @@ func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int
 	if err != nil {
 		return nil, fmt.Errorf("get api key dashboard stats: %w", err)
 	}
+	if err := s.populateAPIKeyUsageWindows(ctx, stats, apiKeyID); err != nil {
+		return nil, err
+	}
 	return stats, nil
+}
+
+func (s *UsageService) populateUserUsageWindows(ctx context.Context, stats *usagestats.UserDashboardStats, userID int64) error {
+	now := time.Now().UTC()
+	windowStart, windowReset := usageFiveHourWindow(now)
+	weeklyStart, weeklyReset := usageWeeklyWindow(now)
+
+	current, err := s.usageRepo.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID:    userID,
+		StartTime: &windowStart,
+		EndTime:   &windowReset,
+	})
+	if err != nil {
+		return fmt.Errorf("get current usage window: %w", err)
+	}
+	weekly, err := s.usageRepo.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID:    userID,
+		StartTime: &weeklyStart,
+		EndTime:   &weeklyReset,
+	})
+	if err != nil {
+		return fmt.Errorf("get weekly usage window: %w", err)
+	}
+	windowLimit, weeklyLimit := s.usageLimitSettings(ctx)
+	applyUsageWindows(stats, current, weekly, windowReset, weeklyReset, windowLimit, weeklyLimit)
+	return nil
+}
+
+func (s *UsageService) populateAPIKeyUsageWindows(ctx context.Context, stats *usagestats.UserDashboardStats, apiKeyID int64) error {
+	now := time.Now().UTC()
+	windowStart, windowReset := usageFiveHourWindow(now)
+	weeklyStart, weeklyReset := usageWeeklyWindow(now)
+
+	current, err := s.usageRepo.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		APIKeyID:  apiKeyID,
+		StartTime: &windowStart,
+		EndTime:   &windowReset,
+	})
+	if err != nil {
+		return fmt.Errorf("get current api key usage window: %w", err)
+	}
+	weekly, err := s.usageRepo.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		APIKeyID:  apiKeyID,
+		StartTime: &weeklyStart,
+		EndTime:   &weeklyReset,
+	})
+	if err != nil {
+		return fmt.Errorf("get weekly api key usage window: %w", err)
+	}
+	windowLimit, weeklyLimit := s.usageLimitSettings(ctx)
+	applyUsageWindows(stats, current, weekly, windowReset, weeklyReset, windowLimit, weeklyLimit)
+	return nil
+}
+
+func (s *UsageService) usageLimitSettings(ctx context.Context) (float64, float64) {
+	if s == nil || s.settingRepo == nil {
+		return baseUsageWindowLimit, baseUsageWeeklyLimit
+	}
+
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyUsageWindowLimitUnits,
+		SettingKeyUsageWeeklyLimitUnits,
+	})
+	if err != nil {
+		return baseUsageWindowLimit, baseUsageWeeklyLimit
+	}
+
+	return parsePositiveUsageLimit(values[SettingKeyUsageWindowLimitUnits], baseUsageWindowLimit),
+		parsePositiveUsageLimit(values[SettingKeyUsageWeeklyLimitUnits], baseUsageWeeklyLimit)
+}
+
+func parsePositiveUsageLimit(raw string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func applyUsageWindows(stats *usagestats.UserDashboardStats, currentUnits, weeklyUnits float64, windowReset, weeklyReset time.Time, windowLimit, weeklyLimit float64) {
+	if stats == nil {
+		return
+	}
+	stats.Plan = defaultUsagePlan
+	stats.PlanType = defaultUsagePlanType
+	stats.CurrentWindow = buildUsageLimitWindow(currentUnits, windowLimit, windowReset)
+	stats.WeeklyWindow = buildUsageLimitWindow(weeklyUnits, weeklyLimit, weeklyReset)
+}
+
+func buildUsageLimitWindow(used, limit float64, reset time.Time) *usagestats.UsageLimitWindow {
+	remaining := math.Max(limit-used, 0)
+	percent := 0.0
+	if limit > 0 {
+		percent = math.Min(math.Max(used/limit*100, 0), 100)
+	}
+	return &usagestats.UsageLimitWindow{
+		UsedUnits:      roundUsageUnits(used),
+		LimitUnits:     roundUsageUnits(limit),
+		RemainingUnits: roundUsageUnits(remaining),
+		UsedPercent:    roundUsageUnits(percent),
+		ResetsAt:       reset.UTC().Format(usageWindowTimeLayout),
+	}
+}
+
+func usageFiveHourWindow(now time.Time) (time.Time, time.Time) {
+	now = now.UTC()
+	epoch := time.Unix(0, 0).UTC()
+	elapsed := now.Sub(epoch)
+	window := time.Duration(usageWindowHours) * time.Hour
+	start := epoch.Add((elapsed / window) * window)
+	return start, start.Add(window)
+}
+
+func usageWeeklyWindow(now time.Time) (time.Time, time.Time) {
+	now = now.UTC()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	daysSinceMonday := (int(startOfDay.Weekday()) + 6) % 7
+	start := startOfDay.AddDate(0, 0, -daysSinceMonday)
+	return start, start.AddDate(0, 0, 7)
+}
+
+func roundUsageUnits(value float64) float64 {
+	return math.Round(value*100) / 100
 }
 
 // GetUserUsageTrendByUserID returns per-user usage trend.

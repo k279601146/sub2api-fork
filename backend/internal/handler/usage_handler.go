@@ -30,6 +30,13 @@ func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.
 	}
 }
 
+func (h *UsageHandler) UsageService() *service.UsageService {
+	if h == nil {
+		return nil
+	}
+	return h.usageService
+}
+
 // List handles listing usage records with pagination
 // GET /api/v1/usage
 func (h *UsageHandler) List(c *gin.Context) {

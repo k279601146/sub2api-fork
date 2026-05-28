@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -232,7 +233,7 @@ func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 	req.Header.Set("x-api-key", apiKey.Key)
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 }
 
 func TestAPIKeyAuthOverwritesInvalidContextGroup(t *testing.T) {
@@ -297,7 +298,7 @@ func TestAPIKeyAuthOverwritesInvalidContextGroup(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), ctxkey.Group, invalidGroup))
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 }
 
 func TestAPIKeyAuthIPRestrictionDoesNotTrustSpoofedForwardHeaders(t *testing.T) {
@@ -395,7 +396,7 @@ func TestAPIKeyAuthTouchesLastUsedOnSuccess(t *testing.T) {
 	req.Header.Set("x-api-key", apiKey.Key)
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	require.Equal(t, apiKey.ID, touchedID)
 	require.False(t, touchedAt.IsZero(), "expected touch timestamp")
 }
@@ -444,6 +445,139 @@ func TestAPIKeyAuthTouchLastUsedFailureDoesNotBlock(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "touch failure should not block request")
 	require.Equal(t, 1, touchCalls)
+}
+
+func TestAPIKeyAuthAllowsReadOnlyGatewayEndpointsWithZeroBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:          9,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     0,
+		Concurrency: 3,
+	}
+	apiKey := &service.APIKey{
+		ID:     102,
+		UserID: user.ID,
+		Key:    "zero-balance",
+		Status: service.StatusActive,
+		User:   user,
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	}
+
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg, nil, nil)))
+	router.GET("/v1/models", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+	router.GET("/v1/messages", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	models := httptest.NewRecorder()
+	modelsReq := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	modelsReq.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(models, modelsReq)
+	require.Equal(t, http.StatusOK, models.Code)
+
+	messages := httptest.NewRecorder()
+	messagesReq := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+	messagesReq.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(messages, messagesReq)
+	require.Equal(t, http.StatusForbidden, messages.Code)
+	require.Contains(t, messages.Body.String(), "INSUFFICIENT_BALANCE")
+}
+
+func TestAPIKeyAuthAllowsIDEJWTWithZeroBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:                   19,
+		Email:                "ide-zero@example.com",
+		Role:                 service.RoleUser,
+		Status:               service.StatusActive,
+		Balance:              0,
+		Concurrency:          3,
+		TokenVersion:         1,
+		TokenVersionResolved: true,
+	}
+	groupID := int64(77)
+	apiKey := &service.APIKey{
+		ID:      120,
+		UserID:  user.ID,
+		Name:    service.IDEGatewayAPIKeyName,
+		Key:     "ide-zero-balance-key",
+		Status:  service.StatusActive,
+		User:    user,
+		GroupID: &groupID,
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+		listByUserID: func(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+			if userID != user.ID {
+				return nil, nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return []service.APIKey{clone}, &pagination.PaginationResult{Total: 1}, nil
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	cfg.JWT.Secret = "unit-test-secret-32-bytes-minimum"
+	cfg.JWT.ExpireHour = 1
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+	userService := service.NewUserService(&stubUserRepo{
+		getByID: func(ctx context.Context, id int64) (*service.User, error) {
+			if id != user.ID {
+				return nil, service.ErrUserNotFound
+			}
+			clone := *user
+			return &clone, nil
+		},
+	}, nil, nil, nil)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg, authService, userService)))
+	router.POST("/v1/messages", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &service.JWTClaims{
+		UserID:       user.ID,
+		Email:        user.Email,
+		Role:         user.Role,
+		TokenVersion: user.TokenVersion,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+		},
+	})
+	tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 }
 
 func TestAPIKeyAuthTouchesLastUsedInStandardMode(t *testing.T) {

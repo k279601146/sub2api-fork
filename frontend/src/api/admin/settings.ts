@@ -330,6 +330,8 @@ export interface SystemSettings {
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
   default_concurrency: number;
+  usage_window_limit_units: number;
+  usage_weekly_limit_units: number;
   default_user_rpm_limit: number;
   default_subscriptions: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
@@ -547,6 +549,8 @@ export interface UpdateSettingsRequest {
   affiliate_rebate_duration_days?: number;
   affiliate_rebate_per_invitee_cap?: number;
   default_concurrency?: number;
+  usage_window_limit_units?: number;
+  usage_weekly_limit_units?: number;
   default_user_rpm_limit?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;

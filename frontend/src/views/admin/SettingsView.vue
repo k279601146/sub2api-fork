@@ -2800,6 +2800,42 @@
                     {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
                   </p>
                 </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.defaults.usageWindowLimitUnits") }}
+                  </label>
+                  <input
+                    v-model.number="form.usage_window_limit_units"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    class="input"
+                    placeholder="100"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.usageWindowLimitUnitsHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.defaults.usageWeeklyLimitUnits") }}
+                  </label>
+                  <input
+                    v-model.number="form.usage_weekly_limit_units"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    class="input"
+                    placeholder="700"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.usageWeeklyLimitUnitsHint") }}
+                  </p>
+                </div>
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -6333,6 +6369,8 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
   default_concurrency: 1,
+  usage_window_limit_units: 100,
+  usage_weekly_limit_units: 700,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
@@ -7442,6 +7480,14 @@ async function saveSettings() {
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       default_concurrency: form.default_concurrency,
+      usage_window_limit_units: Math.max(
+        1,
+        Number(form.usage_window_limit_units) || 100,
+      ),
+      usage_weekly_limit_units: Math.max(
+        1,
+        Number(form.usage_weekly_limit_units) || 700,
+      ),
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,

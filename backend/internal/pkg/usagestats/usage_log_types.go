@@ -122,6 +122,17 @@ type GroupUsageSummary struct {
 	TotalCost float64 `json:"total_cost"`
 }
 
+// UsageLimitWindow represents the product-facing usage quota window.
+// Units follow billing_usage_system.md: input-like tokens / 1000 plus output
+// tokens / 1000 * 2, with feature/model multipliers applied later as needed.
+type UsageLimitWindow struct {
+	UsedUnits      float64 `json:"used_units"`
+	LimitUnits     float64 `json:"limit_units"`
+	RemainingUnits float64 `json:"remaining_units"`
+	UsedPercent    float64 `json:"used_percent"`
+	ResetsAt       string  `json:"resets_at"`
+}
+
 // GroupStat represents usage statistics for a single group
 type GroupStat struct {
 	GroupID     int64   `json:"group_id"`
@@ -200,6 +211,11 @@ type APIKeyUsageTrendPoint struct {
 
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats struct {
+	Plan          string            `json:"plan"`
+	PlanType      string            `json:"plan_type"`
+	CurrentWindow *UsageLimitWindow `json:"current_window,omitempty"`
+	WeeklyWindow  *UsageLimitWindow `json:"weekly_window,omitempty"`
+
 	// API Key 统计
 	TotalAPIKeys  int64 `json:"total_api_keys"`
 	ActiveAPIKeys int64 `json:"active_api_keys"`
