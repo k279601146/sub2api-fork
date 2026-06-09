@@ -88,7 +88,7 @@ func apiKeyOrJWTAuth(
 			zap.Any("group_id", apiKey.GroupID))
 
 		c.Request.Header.Set("Authorization", "Bearer "+apiKey.Key)
-		c.Set("auth_type", "ide_jwt")
+		c.Set("auth_type", service.AuthTypeIDEJWT)
 		originalKeyAuth(c)
 	}
 }
@@ -196,6 +196,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
+		if c.GetString("auth_type") == service.AuthTypeIDEJWT {
+			apiKey.RuntimeAuthType = service.AuthTypeIDEJWT
+		}
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -283,7 +286,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// IDE JWT uses product-facing units windows; wallet balance is not a hard gate there.
-				if c.GetString("auth_type") != "ide_jwt" && apiKey.User.Balance <= 0 {
+				if c.GetString("auth_type") != service.AuthTypeIDEJWT && apiKey.User.Balance <= 0 {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}

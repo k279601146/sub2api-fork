@@ -92,3 +92,27 @@ func TestApplyUsageWindows_UsesConfiguredLimits(t *testing.T) {
 	require.Equal(t, 1200.0, stats.WeeklyWindow.RemainingUnits)
 	require.Equal(t, 20.0, stats.WeeklyWindow.UsedPercent)
 }
+
+func TestCalculateDev2RewardBalanceCost_UsesWindowBeforeBalance(t *testing.T) {
+	got := calculateDev2RewardBalanceCost(20, 100, 200, 700, 30, 500)
+
+	require.Equal(t, 0.0, got)
+}
+
+func TestCalculateDev2RewardBalanceCost_ChargesOnlyOverage(t *testing.T) {
+	got := calculateDev2RewardBalanceCost(90, 100, 200, 700, 30, 500)
+
+	require.Equal(t, 20.0, got)
+}
+
+func TestCalculateDev2RewardBalanceCost_UsesStricterWeeklyWindow(t *testing.T) {
+	got := calculateDev2RewardBalanceCost(20, 100, 690, 700, 30, 500)
+
+	require.Equal(t, 20.0, got)
+}
+
+func TestCalculateDev2RewardBalanceCost_DoesNotOverdraftBalance(t *testing.T) {
+	got := calculateDev2RewardBalanceCost(100, 100, 700, 700, 30, 12.345)
+
+	require.Equal(t, 12.35, got)
+}

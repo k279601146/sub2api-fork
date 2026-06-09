@@ -12,6 +12,7 @@ const (
 	StatusAPIKeyDisabled       = "disabled"
 	StatusAPIKeyQuotaExhausted = "quota_exhausted"
 	StatusAPIKeyExpired        = "expired"
+	AuthTypeIDEJWT             = "ide_jwt"
 )
 
 // Rate limit window durations
@@ -44,6 +45,8 @@ type APIKey struct {
 	UpdatedAt           time.Time
 	User                *User
 	Group               *Group
+	// RuntimeAuthType 仅在请求生命周期内标记认证来源，不持久化也不返回给客户端。
+	RuntimeAuthType string `json:"-"`
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

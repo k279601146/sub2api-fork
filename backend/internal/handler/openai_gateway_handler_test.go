@@ -462,6 +462,54 @@ func TestOpenAIResponses_SetsClientTransportHTTP(t *testing.T) {
 	require.Equal(t, service.OpenAIClientTransportHTTP, service.GetOpenAIClientTransport(c))
 }
 
+func TestNormalizeOpenAITools_NativeResponsesKeepsRootParameters(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.5",
+		"tools":[{
+			"type":"function",
+			"name":"web_search",
+			"description":"Search",
+			"parameters":{
+				"type":"object",
+				"properties":{"query":{"type":"string"}},
+				"required":["query"],
+				"additionalProperties":false
+			},
+			"strict":true
+		}]
+	}`)
+
+	got := normalizeOpenAITools(body, "gpt-5.5")
+
+	require.Equal(t, "string", gjson.GetBytes(got, "tools.0.parameters.properties.query.type").String())
+	require.Equal(t, "query", gjson.GetBytes(got, "tools.0.parameters.required.0").String())
+	require.False(t, gjson.GetBytes(got, "tools.0.function").Exists())
+}
+
+func TestNormalizeOpenAITools_NativeChatStyleFunctionIsFlattenedForResponses(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.5",
+		"tools":[{
+			"type":"function",
+			"function":{
+				"name":"web_search",
+				"description":"Search",
+				"parameters":{
+					"type":"object",
+					"properties":{"query":{"type":"string"}},
+					"required":["query"]
+				}
+			}
+		}]
+	}`)
+
+	got := normalizeOpenAITools(body, "gpt-5.5")
+
+	require.Equal(t, "web_search", gjson.GetBytes(got, "tools.0.name").String())
+	require.Equal(t, "string", gjson.GetBytes(got, "tools.0.parameters.properties.query.type").String())
+	require.False(t, gjson.GetBytes(got, "tools.0.function").Exists())
+}
+
 func TestOpenAIResponses_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

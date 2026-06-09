@@ -404,11 +404,15 @@ func ProvideBillingCacheService(
 	userRepo UserRepository,
 	subRepo UserSubscriptionRepository,
 	apiKeyRepo APIKeyRepository,
+	usageRepo UsageLogRepository,
+	settingRepo SettingRepository,
 	rpmCache UserRPMCache,
 	rateRepo UserGroupRateRepository,
 	cfg *config.Config,
 ) *BillingCacheService {
-	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg)
+	svc := NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg)
+	svc.SetDev2UsageGate(usageRepo, settingRepo)
+	return svc
 }
 
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.

@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -11,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -65,6 +68,7 @@ const (
 	cacheWriteTimeout         = 2 * time.Second // 单个写入操作超时
 	cacheWriteDropLogInterval = 5 * time.Second // 丢弃日志节流间隔
 	balanceLoadTimeout        = 3 * time.Second
+	dev2TurnReserveUnits      = 8.0
 )
 
 // cacheWriteTask 缓存写入任务
@@ -83,6 +87,10 @@ type apiKeyRateLimitLoader interface {
 	GetRateLimitData(ctx context.Context, keyID int64) (*APIKeyRateLimitData, error)
 }
 
+type usageUnitsReader interface {
+	GetUsageUnitsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (float64, error)
+}
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
@@ -90,6 +98,8 @@ type BillingCacheService struct {
 	userRepo              UserRepository
 	subRepo               UserSubscriptionRepository
 	apiKeyRateLimitLoader apiKeyRateLimitLoader
+	dev2UsageReader       usageUnitsReader
+	dev2SettingRepo       SettingRepository
 	userRPMCache          UserRPMCache
 	userGroupRateRepo     UserGroupRateRepository
 	cfg                   *config.Config
@@ -130,6 +140,12 @@ func NewBillingCacheService(
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
 	return svc
+}
+
+// SetDev2UsageGate 注入 IDE JWT 的 Dev2 usage units 免费窗口预检依赖。
+func (s *BillingCacheService) SetDev2UsageGate(usageReader usageUnitsReader, settingRepo SettingRepository) {
+	s.dev2UsageReader = usageReader
+	s.dev2SettingRepo = settingRepo
 }
 
 // Stop 关闭缓存写入工作池
@@ -679,8 +695,22 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 			return err
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
-			return err
+		if isIDEGatewayAPIKey(apiKey) {
+			err := s.checkDev2UsageWindowEligibility(ctx, user.ID, dev2TurnReserveUnits)
+			switch {
+			case err == nil:
+				// IDE JWT 使用产品侧 usage units 窗口；免费窗口足够时不要求钱包余额大于 0。
+			case errors.Is(err, errDev2UsageGateNotConfigured):
+				if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+					return err
+				}
+			default:
+				return err
+			}
+		} else {
+			if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -780,6 +810,67 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 		}
 	}
 
+	return nil
+}
+
+var errDev2UsageGateNotConfigured = errors.New("dev2 usage gate not configured")
+
+func isIDEGatewayAPIKey(apiKey *APIKey) bool {
+	return apiKey != nil && apiKey.RuntimeAuthType == AuthTypeIDEJWT
+}
+
+func (s *BillingCacheService) checkDev2UsageWindowEligibility(ctx context.Context, userID int64, reserveUnits float64) error {
+	if s == nil || s.dev2UsageReader == nil {
+		return errDev2UsageGateNotConfigured
+	}
+	if reserveUnits <= 0 {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	windowStart, windowReset := usageFiveHourWindow(now)
+	weeklyStart, weeklyReset := usageWeeklyWindow(now)
+
+	current, err := s.dev2UsageReader.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID:    userID,
+		StartTime: &windowStart,
+		EndTime:   &windowReset,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "ALERT: dev2 current usage window check failed for user %d: %v", userID, err)
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+	weekly, err := s.dev2UsageReader.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID:    userID,
+		StartTime: &weeklyStart,
+		EndTime:   &weeklyReset,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "ALERT: dev2 weekly usage window check failed for user %d: %v", userID, err)
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+
+	windowLimit, weeklyLimit := usageLimitSettingsFromRepo(ctx, s.dev2SettingRepo)
+	freeRemaining := math.Min(math.Max(windowLimit-current, 0), math.Max(weeklyLimit-weekly, 0))
+	requiredBalance := roundUsageUnits(math.Max(reserveUnits-freeRemaining, 0))
+	if requiredBalance <= 0 {
+		return nil
+	}
+
+	balance, err := s.GetUserBalance(ctx, userID)
+	if err != nil {
+		if s.circuitBreaker != nil {
+			s.circuitBreaker.OnFailure(err)
+		}
+		logger.LegacyPrintf("service.billing_cache", "ALERT: dev2 balance check failed for user %d: %v", userID, err)
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+	if s.circuitBreaker != nil {
+		s.circuitBreaker.OnSuccess()
+	}
+	if balance < requiredBalance {
+		return ErrInsufficientBalance
+	}
 	return nil
 }
 

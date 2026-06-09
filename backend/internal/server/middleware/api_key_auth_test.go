@@ -680,8 +680,9 @@ func TestAPIKeyAuthAcceptsJWTByResolvingIDEGatewayKey(t *testing.T) {
 		resolvedKey, ok := GetAPIKeyFromContext(c)
 		require.True(t, ok)
 		c.JSON(http.StatusOK, gin.H{
-			"api_key":   resolvedKey.Key,
-			"auth_type": c.GetString("auth_type"),
+			"api_key":           resolvedKey.Key,
+			"auth_type":         c.GetString("auth_type"),
+			"runtime_auth_type": resolvedKey.RuntimeAuthType,
 		})
 	})
 
@@ -748,7 +749,10 @@ func TestAPIKeyAuthJWTPrefersExistingGroupBoundUserKey(t *testing.T) {
 	router.GET("/t", func(c *gin.Context) {
 		resolvedKey, ok := GetAPIKeyFromContext(c)
 		require.True(t, ok)
-		c.JSON(http.StatusOK, gin.H{"api_key": resolvedKey.Key})
+		c.JSON(http.StatusOK, gin.H{
+			"api_key":           resolvedKey.Key,
+			"runtime_auth_type": resolvedKey.RuntimeAuthType,
+		})
 	})
 
 	w := httptest.NewRecorder()
@@ -758,6 +762,7 @@ func TestAPIKeyAuthJWTPrefersExistingGroupBoundUserKey(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "manual-group-bound-key")
+	require.Contains(t, w.Body.String(), service.AuthTypeIDEJWT)
 }
 
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {

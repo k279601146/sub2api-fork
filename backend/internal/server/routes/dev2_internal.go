@@ -3,16 +3,24 @@ package routes
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"math"
 	"net/mail"
 	"os"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
+	dbapikey "github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -27,8 +35,9 @@ import (
 )
 
 const (
-	dev2ProviderType = "dev2"
-	dev2ProviderKey  = "dev2"
+	dev2ProviderType     = "dev2"
+	dev2ProviderKey      = "dev2"
+	dev2UsageAccountName = "__dev2_internal_billing__"
 )
 
 type dev2SyncUserRequest struct {
@@ -64,6 +73,73 @@ type dev2BillingSnapshot struct {
 	GeneratedAt time.Time                      `json:"generated_at"`
 }
 
+type dev2RewardGrantRequest struct {
+	ExternalID string         `json:"external_id"`
+	Email      string         `json:"email"`
+	Credits    float64        `json:"credits"`
+	Units      float64        `json:"units"`
+	Reason     string         `json:"reason"`
+	Reference  string         `json:"reference"`
+	Metadata   map[string]any `json:"metadata"`
+}
+
+type dev2UsageRecordRequest struct {
+	ExternalID   string         `json:"external_id"`
+	Email        string         `json:"email"`
+	RequestID    string         `json:"request_id"`
+	ThreadID     string         `json:"thread_id"`
+	Units        float64        `json:"units"`
+	Model        string         `json:"model"`
+	InputTokens  int            `json:"input_tokens"`
+	OutputTokens int            `json:"output_tokens"`
+	ToolNames    []string       `json:"tool_names"`
+	Category     string         `json:"category"`
+	Metadata     map[string]any `json:"metadata"`
+}
+
+type dev2UsageRefundRequest struct {
+	ExternalID     string  `json:"external_id"`
+	Email          string  `json:"email"`
+	ThreadID       string  `json:"thread_id"`
+	TurnID         string  `json:"turn_id"`
+	Units          float64 `json:"units"`
+	Reason         string  `json:"reason"`
+	UsageRecordIDs []int64 `json:"usage_record_ids"`
+}
+
+type dev2UsageRecordResponse struct {
+	ID         int64                          `json:"id"`
+	RequestID  string                         `json:"request_id"`
+	Balance    float64                        `json:"balance"`
+	Units      float64                        `json:"units"`
+	ActualCost float64                        `json:"actual_cost"`
+	Usage      *usagestats.UserDashboardStats `json:"usage,omitempty"`
+}
+
+type dev2UsageRefundResponse struct {
+	ID         int64                          `json:"id"`
+	RequestID  string                         `json:"request_id"`
+	Balance    float64                        `json:"balance"`
+	Units      float64                        `json:"units"`
+	Credited   float64                        `json:"credited"`
+	Usage      *usagestats.UserDashboardStats `json:"usage,omitempty"`
+	Duplicated bool                           `json:"duplicated"`
+}
+
+type dev2RewardGrantResponse struct {
+	ID         int64   `json:"id"`
+	Reference  string  `json:"reference"`
+	Balance    float64 `json:"balance"`
+	Credits    float64 `json:"credits"`
+	Units      float64 `json:"units"`
+	Duplicated bool    `json:"duplicated"`
+}
+
+type dev2UsageAttribution struct {
+	accountID int64
+	apiKeyID  int64
+}
+
 // RegisterDev2InternalRoutes exposes service-to-service endpoints used by dev2.
 func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.Config) {
 	slog.Info(
@@ -79,6 +155,9 @@ func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.
 		group.POST("/ide/auth/authorize", dev2AuthorizeIDE(h, cfg))
 		group.GET("/billing/usage", dev2BillingUsage(h, cfg))
 		group.POST("/billing/usage/check", dev2BillingUsage(h, cfg))
+		group.POST("/billing/usage/record", dev2BillingUsageRecord(h, cfg))
+		group.POST("/billing/usage/refund", dev2BillingUsageRefund(h, cfg))
+		group.POST("/billing/rewards/grant", dev2BillingRewardGrant(h, cfg))
 	}
 }
 
@@ -187,6 +266,417 @@ func dev2BillingUsage(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
 			GeneratedAt: time.Now().UTC(),
 		})
 	}
+}
+
+func dev2BillingUsageRecord(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req dev2UsageRecordRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, "invalid request")
+			return
+		}
+		req.RequestID = strings.TrimSpace(req.RequestID)
+		req.Model = strings.TrimSpace(req.Model)
+		if req.RequestID == "" || len(req.RequestID) > 64 {
+			response.BadRequest(c, "request_id is required and must be at most 64 characters")
+			return
+		}
+		if req.Units <= 0 {
+			response.BadRequest(c, "units must be greater than 0")
+			return
+		}
+
+		user, err := upsertDev2User(c, h, cfg, req.ExternalID, req.Email)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if h.Usage == nil || h.Usage.UsageService() == nil {
+			response.InternalError(c, "usage service is unavailable")
+			return
+		}
+		attribution, err := ensureDev2UsageAttribution(c.Request.Context(), h, user.ID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		model := req.Model
+		if model == "" {
+			model = "dev2-agent"
+		}
+		log, err := h.Usage.UsageService().Create(c.Request.Context(), service.CreateUsageLogRequest{
+			UserID:         user.ID,
+			APIKeyID:       attribution.apiKeyID,
+			AccountID:      attribution.accountID,
+			RequestID:      req.RequestID,
+			Model:          model,
+			InputTokens:    req.InputTokens,
+			OutputTokens:   req.OutputTokens,
+			TotalCost:      req.Units,
+			ActualCost:     req.Units,
+			RateMultiplier: 1,
+			BillingMode:    service.UsageBillingModeDev2Units,
+			Stream:         true,
+		})
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		client := h.IDEAuth.EntClient()
+		if client == nil {
+			response.ErrorFrom(c, service.ErrServiceUnavailable)
+			return
+		}
+		updated, err := client.User.Get(c.Request.Context(), user.ID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		stats, err := h.Usage.UsageService().GetUserDashboardStats(c.Request.Context(), user.ID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		response.Success(c, dev2UsageRecordResponse{
+			ID:         log.ID,
+			RequestID:  req.RequestID,
+			Balance:    updated.Balance,
+			Units:      req.Units,
+			ActualCost: log.ActualCost,
+			Usage:      stats,
+		})
+	}
+}
+
+func dev2BillingUsageRefund(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req dev2UsageRefundRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, "invalid request")
+			return
+		}
+		req.ThreadID = strings.TrimSpace(req.ThreadID)
+		req.TurnID = strings.TrimSpace(req.TurnID)
+		req.Reason = strings.TrimSpace(req.Reason)
+		if req.ThreadID == "" || req.TurnID == "" {
+			response.BadRequest(c, "thread_id and turn_id are required")
+			return
+		}
+
+		user, err := upsertDev2User(c, h, cfg, req.ExternalID, req.Email)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if h.Usage == nil || h.Usage.UsageService() == nil {
+			response.InternalError(c, "usage service is unavailable")
+			return
+		}
+		attribution, err := ensureDev2UsageAttribution(c.Request.Context(), h, user.ID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		client := h.IDEAuth.EntClient()
+		if client == nil {
+			response.ErrorFrom(c, service.ErrServiceUnavailable)
+			return
+		}
+
+		requestID := dev2RefundRequestID(req.ThreadID, req.TurnID)
+		existing, err := client.UsageLog.Query().
+			Where(usagelog.RequestIDEQ(requestID), usagelog.UserIDEQ(user.ID)).
+			First(c.Request.Context())
+		if err == nil {
+			updated, stats, snapshotErr := dev2UsageSnapshotForUser(c.Request.Context(), h, user.ID)
+			if snapshotErr != nil {
+				response.ErrorFrom(c, snapshotErr)
+				return
+			}
+			response.Success(c, dev2UsageRefundResponse{
+				ID:         existing.ID,
+				RequestID:  requestID,
+				Balance:    updated.Balance,
+				Units:      math.Abs(existing.TotalCost),
+				Credited:   math.Abs(existing.ActualCost),
+				Usage:      stats,
+				Duplicated: true,
+			})
+			return
+		}
+		if !dbent.IsNotFound(err) {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		units := math.Max(req.Units, 0)
+		credit := 0.0
+		if len(req.UsageRecordIDs) > 0 {
+			originals, err := client.UsageLog.Query().
+				Where(
+					usagelog.IDIn(req.UsageRecordIDs...),
+					usagelog.UserIDEQ(user.ID),
+					usagelog.BillingModeEQ(service.UsageBillingModeDev2Units),
+				).
+				All(c.Request.Context())
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			units = 0
+			for _, item := range originals {
+				if item.TotalCost > 0 {
+					units += item.TotalCost
+				}
+				if item.ActualCost > 0 {
+					credit += item.ActualCost
+				}
+			}
+		}
+		units = math.Round(units*100) / 100
+		credit = math.Round(credit*100) / 100
+		if units <= 0 {
+			response.BadRequest(c, "refundable units must be greater than 0")
+			return
+		}
+
+		log, err := h.Usage.UsageService().Create(c.Request.Context(), service.CreateUsageLogRequest{
+			UserID:         user.ID,
+			APIKeyID:       attribution.apiKeyID,
+			AccountID:      attribution.accountID,
+			RequestID:      requestID,
+			Model:          "dev2-refund",
+			TotalCost:      -units,
+			ActualCost:     0,
+			RateMultiplier: 1,
+			BillingMode:    service.UsageBillingModeDev2Units,
+			Stream:         true,
+		})
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if credit > 0 {
+			if err := client.User.UpdateOneID(user.ID).AddBalance(credit).Exec(c.Request.Context()); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+		}
+		updated, stats, err := dev2UsageSnapshotForUser(c.Request.Context(), h, user.ID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, dev2UsageRefundResponse{
+			ID:        log.ID,
+			RequestID: requestID,
+			Balance:   updated.Balance,
+			Units:     units,
+			Credited:  credit,
+			Usage:     stats,
+		})
+	}
+}
+
+func dev2BillingRewardGrant(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req dev2RewardGrantRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, "invalid request")
+			return
+		}
+		req.Reference = strings.TrimSpace(req.Reference)
+		req.Reason = strings.TrimSpace(req.Reason)
+		credits := req.Credits
+		if credits <= 0 {
+			credits = req.Units
+		}
+		if credits <= 0 {
+			response.BadRequest(c, "credits must be greater than 0")
+			return
+		}
+		if req.Reference == "" || len(req.Reference) > 32 {
+			response.BadRequest(c, "reference is required and must be at most 32 characters")
+			return
+		}
+
+		user, err := upsertDev2User(c, h, cfg, req.ExternalID, req.Email)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		client := h.IDEAuth.EntClient()
+		if client == nil {
+			response.ErrorFrom(c, service.ErrServiceUnavailable)
+			return
+		}
+
+		existing, err := client.RedeemCode.Query().
+			Where(redeemcode.CodeEQ(req.Reference)).
+			Only(c.Request.Context())
+		if err == nil {
+			if existing.UsedBy != nil && *existing.UsedBy == user.ID {
+				response.Success(c, dev2RewardGrantResponse{
+					ID:         existing.ID,
+					Reference:  req.Reference,
+					Balance:    user.Balance,
+					Credits:    existing.Value,
+					Units:      existing.Value,
+					Duplicated: true,
+				})
+				return
+			}
+			response.BadRequest(c, "reward reference already exists")
+			return
+		}
+		if !dbent.IsNotFound(err) {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		notesPayload := map[string]any{
+			"source":   "dev2_referral_reward",
+			"reason":   req.Reason,
+			"metadata": req.Metadata,
+		}
+		tx, err := client.Tx(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		notesBytes, _ := json.Marshal(notesPayload)
+		now := time.Now().UTC()
+		created, err := tx.Client().RedeemCode.Create().
+			SetCode(req.Reference).
+			SetType(service.RedeemTypeBalance).
+			SetValue(credits).
+			SetStatus(service.StatusUsed).
+			SetUsedBy(user.ID).
+			SetUsedAt(now).
+			SetNotes(string(notesBytes)).
+			Save(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if err := tx.Client().User.UpdateOneID(user.ID).AddBalance(credits).AddTotalRecharged(credits).Exec(c.Request.Context()); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		updated, err := tx.Client().User.Get(c.Request.Context(), user.ID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		response.Success(c, dev2RewardGrantResponse{
+			ID:        created.ID,
+			Reference: req.Reference,
+			Balance:   updated.Balance,
+			Credits:   credits,
+			Units:     credits,
+		})
+	}
+}
+
+func ensureDev2UsageAttribution(ctx context.Context, h *handler.Handlers, userID int64) (*dev2UsageAttribution, error) {
+	if h == nil || h.IDEAuth == nil {
+		return nil, service.ErrServiceUnavailable
+	}
+	client := h.IDEAuth.EntClient()
+	if client == nil {
+		return nil, service.ErrServiceUnavailable
+	}
+
+	account, err := client.Account.Query().
+		Where(
+			dbaccount.NameEQ(dev2UsageAccountName),
+			dbaccount.PlatformEQ(dev2ProviderType),
+			dbaccount.TypeEQ(service.AccountTypeAPIKey),
+		).
+		First(ctx)
+	if err != nil {
+		if !dbent.IsNotFound(err) {
+			return nil, err
+		}
+		account, err = client.Account.Create().
+			SetName(dev2UsageAccountName).
+			SetPlatform(dev2ProviderType).
+			SetType(service.AccountTypeAPIKey).
+			SetCredentials(map[string]any{"source": "dev2_internal_billing"}).
+			SetExtra(map[string]any{"hidden": true, "source": "dev2_internal_billing"}).
+			SetConcurrency(1).
+			SetPriority(9999).
+			SetStatus(service.StatusDisabled).
+			SetSchedulable(false).
+			Save(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	keyValue := fmt.Sprintf("dev2-internal-user-%d", userID)
+	apiKey, err := client.APIKey.Query().
+		Where(dbapikey.KeyEQ(keyValue)).
+		First(ctx)
+	if err != nil {
+		if !dbent.IsNotFound(err) {
+			return nil, err
+		}
+		apiKey, err = client.APIKey.Create().
+			SetUserID(userID).
+			SetKey(keyValue).
+			SetName("Dev2 internal billing").
+			SetStatus(service.StatusDisabled).
+			Save(ctx)
+		if err != nil {
+			existing, findErr := client.APIKey.Query().Where(dbapikey.KeyEQ(keyValue)).First(ctx)
+			if findErr == nil {
+				apiKey = existing
+			} else {
+				return nil, err
+			}
+		}
+	}
+
+	if apiKey.UserID != userID {
+		return nil, infraerrors.InternalServer("DEV2_USAGE_API_KEY_OWNER_MISMATCH", "dev2 usage attribution key owner mismatch")
+	}
+	return &dev2UsageAttribution{accountID: account.ID, apiKeyID: apiKey.ID}, nil
+}
+
+func dev2RefundRequestID(threadID, turnID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(threadID) + ":" + strings.TrimSpace(turnID) + ":refund"))
+	return "dev2refund:" + hex.EncodeToString(sum[:])[:32]
+}
+
+func dev2UsageSnapshotForUser(ctx context.Context, h *handler.Handlers, userID int64) (*dbent.User, *usagestats.UserDashboardStats, error) {
+	if h == nil || h.IDEAuth == nil || h.Usage == nil || h.Usage.UsageService() == nil {
+		return nil, nil, service.ErrServiceUnavailable
+	}
+	client := h.IDEAuth.EntClient()
+	if client == nil {
+		return nil, nil, service.ErrServiceUnavailable
+	}
+	updated, err := client.User.Get(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	stats, err := h.Usage.UsageService().GetUserDashboardStats(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return updated, stats, nil
 }
 
 func upsertDev2User(c *gin.Context, h *handler.Handlers, cfg *config.Config, externalID, email string) (*service.User, error) {

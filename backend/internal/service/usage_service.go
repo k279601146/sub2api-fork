@@ -20,12 +20,13 @@ var (
 )
 
 const (
-	usageWindowHours      = 5
-	baseUsageWindowLimit  = 100.0
-	baseUsageWeeklyLimit  = 700.0
-	defaultUsagePlan      = "free"
-	defaultUsagePlanType  = "free"
-	usageWindowTimeLayout = time.RFC3339
+	usageWindowHours          = 5
+	baseUsageWindowLimit      = 100.0
+	baseUsageWeeklyLimit      = 700.0
+	defaultUsagePlan          = "free"
+	defaultUsagePlanType      = "free"
+	usageWindowTimeLayout     = time.RFC3339
+	UsageBillingModeDev2Units = "dev2_units"
 )
 
 // CreateUsageLogRequest 创建使用日志请求
@@ -48,6 +49,7 @@ type CreateUsageLogRequest struct {
 	TotalCost             float64 `json:"total_cost"`
 	ActualCost            float64 `json:"actual_cost"`
 	RateMultiplier        float64 `json:"rate_multiplier"`
+	BillingMode           string  `json:"billing_mode"`
 	Stream                bool    `json:"stream"`
 	DurationMs            *int    `json:"duration_ms"`
 }
@@ -103,9 +105,15 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	}
 
 	// 验证用户存在
-	_, err = s.userRepo.GetByID(txCtx, req.UserID)
+	user, err := s.userRepo.GetByID(txCtx, req.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if strings.EqualFold(strings.TrimSpace(req.BillingMode), UsageBillingModeDev2Units) {
+		req.ActualCost, err = s.dev2RewardBalanceCost(txCtx, req.UserID, req.TotalCost, user.Balance)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 创建使用日志
@@ -128,6 +136,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 		TotalCost:             req.TotalCost,
 		ActualCost:            req.ActualCost,
 		RateMultiplier:        req.RateMultiplier,
+		BillingMode:           optionalTrimmedStringPtr(req.BillingMode),
 		Stream:                req.Stream,
 		DurationMs:            req.DurationMs,
 	}
@@ -155,6 +164,33 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	s.invalidateUsageCaches(ctx, req.UserID, balanceUpdated)
 
 	return usageLog, nil
+}
+
+func (s *UsageService) dev2RewardBalanceCost(ctx context.Context, userID int64, units float64, balance float64) (float64, error) {
+	if units <= 0 {
+		return 0, nil
+	}
+	now := time.Now().UTC()
+	windowStart, windowReset := usageFiveHourWindow(now)
+	weeklyStart, weeklyReset := usageWeeklyWindow(now)
+	current, err := s.usageRepo.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID:    userID,
+		StartTime: &windowStart,
+		EndTime:   &windowReset,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get current usage window for dev2 balance cost: %w", err)
+	}
+	weekly, err := s.usageRepo.GetUsageUnitsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID:    userID,
+		StartTime: &weeklyStart,
+		EndTime:   &weeklyReset,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get weekly usage window for dev2 balance cost: %w", err)
+	}
+	windowLimit, weeklyLimit := s.usageLimitSettings(ctx)
+	return calculateDev2RewardBalanceCost(current, windowLimit, weekly, weeklyLimit, units, balance), nil
 }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {
@@ -374,11 +410,18 @@ func (s *UsageService) populateAPIKeyUsageWindows(ctx context.Context, stats *us
 }
 
 func (s *UsageService) usageLimitSettings(ctx context.Context) (float64, float64) {
-	if s == nil || s.settingRepo == nil {
+	if s == nil {
+		return baseUsageWindowLimit, baseUsageWeeklyLimit
+	}
+	return usageLimitSettingsFromRepo(ctx, s.settingRepo)
+}
+
+func usageLimitSettingsFromRepo(ctx context.Context, settingRepo SettingRepository) (float64, float64) {
+	if settingRepo == nil {
 		return baseUsageWindowLimit, baseUsageWeeklyLimit
 	}
 
-	values, err := s.settingRepo.GetMultiple(ctx, []string{
+	values, err := settingRepo.GetMultiple(ctx, []string{
 		SettingKeyUsageWindowLimitUnits,
 		SettingKeyUsageWeeklyLimitUnits,
 	})
@@ -421,6 +464,17 @@ func buildUsageLimitWindow(used, limit float64, reset time.Time) *usagestats.Usa
 		UsedPercent:    roundUsageUnits(percent),
 		ResetsAt:       reset.UTC().Format(usageWindowTimeLayout),
 	}
+}
+
+func calculateDev2RewardBalanceCost(currentUsed, currentLimit, weeklyUsed, weeklyLimit, units, balance float64) float64 {
+	if units <= 0 || balance <= 0 {
+		return 0
+	}
+	currentRemaining := math.Max(currentLimit-currentUsed, 0)
+	weeklyRemaining := math.Max(weeklyLimit-weeklyUsed, 0)
+	freeRemaining := math.Min(currentRemaining, weeklyRemaining)
+	overage := math.Max(units-freeRemaining, 0)
+	return roundUsageUnits(math.Min(overage, balance))
 }
 
 func usageFiveHourWindow(now time.Time) (time.Time, time.Time) {

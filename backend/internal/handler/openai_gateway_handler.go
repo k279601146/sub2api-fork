@@ -334,7 +334,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Debug logging for upstream forward payload
 		//reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", string(forwardBody)))
 		// 直接内联，一行搞定，长度1024可改
-		reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", func() string { s := string(forwardBody); if len(s) > 1024 { return s[:1024] + "..." }; return s }()))
+		reqLog.Info("openai.forward_payload_debug", zap.String("forward_body", func() string {
+			s := string(forwardBody)
+			if len(s) > 1024 {
+				return s[:1024] + "..."
+			}
+			return s
+		}()))
 
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -1823,10 +1829,30 @@ func normalizeOpenAITools(body []byte, model string) []byte {
 					newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.name", i), fname)
 				}
 			}
+			if isNativeOpenAI {
+				if params := tool.Get("function.parameters"); params.Exists() && !tool.Get("parameters").Exists() {
+					newBody, _ = sjson.SetRawBytes(newBody, fmt.Sprintf("tools.%d.parameters", i), []byte(params.Raw))
+				}
+				newBody, _ = sjson.DeleteBytes(newBody, fmt.Sprintf("tools.%d.function", i))
+			}
 			continue
 		}
 
-		// Flattened tool: wrap name/description/parameters into a nested "function" object
+		// Flattened Responses tool: keep root-level parameters for native OpenAI.
+		// The Responses API ignores Chat Completions-style function.parameters here,
+		// so deleting root parameters strips schemas and yields empty tool args.
+		if isNativeOpenAI {
+			if !hasRootName {
+				name := tool.Get("function.name").String()
+				if name == "" {
+					name = "unknown"
+				}
+				newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.name", i), name)
+			}
+			continue
+		}
+
+		// Adapter-routed flattened tool: wrap name/description/parameters into a nested "function" object.
 		name := tool.Get("name").String()
 		if name == "" {
 			name = "unknown"
@@ -1855,9 +1881,6 @@ func normalizeOpenAITools(body []byte, model string) []byte {
 		if !hasRootName {
 			newBody, _ = sjson.SetBytes(newBody, fmt.Sprintf("tools.%d.name", i), name)
 		}
-
-		// Clean up flattened "parameters" (now inside function{})
-		newBody, _ = sjson.DeleteBytes(newBody, fmt.Sprintf("tools.%d.parameters", i))
 	}
 	return newBody
 }

@@ -3487,18 +3487,21 @@ func (r *usageLogRepository) GetUsageUnitsWithFilters(ctx context.Context, filte
 	query := fmt.Sprintf(`
 		WITH per_request AS (
 			SELECT
-				(
-					COALESCE(input_tokens, 0)::float8 / 1000
-					+ COALESCE(cache_creation_tokens, 0)::float8 / 1000
-					+ COALESCE(cache_read_tokens, 0)::float8 / 1000
-					+ COALESCE(output_tokens, 0)::float8 / 1000 * 2
-				) AS raw_units
+				CASE
+					WHEN billing_mode = '%s' THEN COALESCE(total_cost, 0)
+					ELSE (
+						COALESCE(input_tokens, 0)::float8 / 1000
+						+ COALESCE(cache_creation_tokens, 0)::float8 / 1000
+						+ COALESCE(cache_read_tokens, 0)::float8 / 1000
+						+ COALESCE(output_tokens, 0)::float8 / 1000 * 2
+					)
+				END AS raw_units
 			FROM usage_logs
 			%s
 		)
-		SELECT COALESCE(SUM(CASE WHEN raw_units >= 1 THEN raw_units ELSE 0 END), 0)
+		SELECT GREATEST(COALESCE(SUM(CASE WHEN raw_units >= 1 OR raw_units < 0 THEN raw_units ELSE 0 END), 0), 0)
 		FROM per_request
-	`, buildWhere(conditions))
+	`, service.UsageBillingModeDev2Units, buildWhere(conditions))
 
 	var units float64
 	if err := scanSingleRow(ctx, r.sql, query, args, &units); err != nil {
