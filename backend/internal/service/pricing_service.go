@@ -573,6 +573,11 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 		return s.matchOpenAIModel(lookupCandidates[0])
 	}
 
+	// 6. DeepSeek 兼容上游常见自定义模型名回退。
+	if strings.HasPrefix(lookupCandidates[0], "deepseek-") {
+		return s.matchDeepSeekModel(lookupCandidates[0])
+	}
+
 	return nil
 }
 
@@ -874,6 +879,21 @@ func (s *PricingService) generateOpenAIModelVariants(model string, datePattern *
 	}
 
 	return variants
+}
+
+func (s *PricingService) matchDeepSeekModel(model string) *LiteLLMModelPricing {
+	candidates := []string{"deepseek-chat"}
+	if strings.Contains(model, "reasoner") || strings.Contains(model, "r1") {
+		candidates = []string{"deepseek-reasoner", "deepseek-chat"}
+	}
+	for _, candidate := range candidates {
+		if pricing, ok := s.pricingData[candidate]; ok {
+			logger.With(zap.String("component", "service.pricing")).
+				Info(fmt.Sprintf("[Pricing] DeepSeek fallback matched %s -> %s", model, candidate))
+			return pricing
+		}
+	}
+	return nil
 }
 
 // GetStatus 获取服务状态

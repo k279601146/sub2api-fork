@@ -372,6 +372,7 @@ type ChatCompletionsRequest struct {
 	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
 	Tools               []ChatTool         `json:"tools,omitempty"`
 	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
+	ParallelToolCalls   *bool              `json:"parallel_tool_calls,omitempty"`
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
 	ServiceTier         string             `json:"service_tier,omitempty"`
 	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
@@ -391,6 +392,7 @@ type ChatMessage struct {
 	Role             string          `json:"role"` // "system" | "user" | "assistant" | "tool" | "function"
 	Content          json.RawMessage `json:"content,omitempty"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	Reasoning        string          `json:"reasoning,omitempty"`
 	Name             string          `json:"name,omitempty"`
 	ToolCalls        []ChatToolCall  `json:"tool_calls,omitempty"`
 	ToolCallID       string          `json:"tool_call_id,omitempty"`

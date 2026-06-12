@@ -111,6 +111,31 @@ func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
 	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
 }
 
+func TestGetModelPricing_DeepSeekVariantFallsBackToKnownFamily(t *testing.T) {
+	chatPricing := &LiteLLMModelPricing{
+		InputCostPerToken:  2.8e-7,
+		OutputCostPerToken: 4.2e-7,
+		LiteLLMProvider:    "deepseek",
+		Mode:               "chat",
+	}
+	reasonerPricing := &LiteLLMModelPricing{
+		InputCostPerToken:  2.8e-7,
+		OutputCostPerToken: 4.2e-7,
+		LiteLLMProvider:    "deepseek",
+		Mode:               "chat",
+	}
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"deepseek-chat":     chatPricing,
+			"deepseek-reasoner": reasonerPricing,
+		},
+	}
+
+	require.Same(t, chatPricing, svc.GetModelPricing("deepseek-v4-flash"))
+	require.Same(t, reasonerPricing, svc.GetModelPricing("deepseek-r1-distill"))
+	require.Same(t, reasonerPricing, svc.GetModelPricing("deepseek-reasoner-pro"))
+}
+
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{

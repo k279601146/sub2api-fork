@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/cespare/xxhash/v2"
@@ -2477,6 +2478,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err
+	}
+
+	if account.Type == AccountTypeAPIKey &&
+		!openai_compat.ShouldUseResponsesAPI(account.Extra) &&
+		c != nil &&
+		strings.Contains(c.Request.URL.Path, "/responses") {
+		return s.forwardResponsesAsChatCompletions(ctx, c, account, body, token, originalModel, billingModel, upstreamModel, reqStream, startTime)
 	}
 
 	// Capture upstream request body for ops retry of this attempt.
