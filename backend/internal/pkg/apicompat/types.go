@@ -175,6 +175,7 @@ type ResponsesRequest struct {
 	TopP               *float64            `json:"top_p,omitempty"`
 	Stream             bool                `json:"stream,omitempty"`
 	Tools              []ResponsesTool     `json:"tools,omitempty"`
+	DynamicTools       []ResponsesTool     `json:"dynamic_tools,omitempty"`
 	Include            []string            `json:"include,omitempty"`
 	Store              *bool               `json:"store,omitempty"`
 	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
@@ -226,11 +227,14 @@ type ResponsesContentPart struct {
 
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
-	Type        string          `json:"type"` // "function" | "web_search" | "local_shell" etc.
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
-	Strict      *bool           `json:"strict,omitempty"`
+	Type             string          `json:"type"` // "function" | "web_search" | "local_shell" etc.
+	Name             string          `json:"name,omitempty"`
+	Namespace        string          `json:"namespace,omitempty"`
+	Description      string          `json:"description,omitempty"`
+	Parameters       json.RawMessage `json:"parameters,omitempty"`
+	InputSchema      json.RawMessage `json:"input_schema,omitempty"`
+	InputSchemaCamel json.RawMessage `json:"inputSchema,omitempty"`
+	Strict           *bool           `json:"strict,omitempty"`
 }
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.

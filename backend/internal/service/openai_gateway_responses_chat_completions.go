@@ -175,20 +175,47 @@ func responsesBodyToChatCompletionsBody(body []byte, upstreamModel string) ([]by
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
 	}
-	for _, tool := range req.Tools {
-		if tool.Type != "function" {
-			continue
+	for _, tool := range append(req.Tools, req.DynamicTools...) {
+		if chatTool, ok := responsesToolToChatTool(tool); ok {
+			out.Tools = append(out.Tools, chatTool)
 		}
-		fn := &apicompat.ChatFunction{
-			Name:        tool.Name,
-			Description: tool.Description,
-			Parameters:  tool.Parameters,
-			Strict:      tool.Strict,
-		}
-		out.Tools = append(out.Tools, apicompat.ChatTool{Type: "function", Function: fn})
 	}
 	out.ToolChoice = responsesToolChoiceToChat(req.ToolChoice)
 	return json.Marshal(out)
+}
+
+func responsesToolToChatTool(tool apicompat.ResponsesTool) (apicompat.ChatTool, bool) {
+	name := strings.TrimSpace(tool.Name)
+	if name == "" {
+		return apicompat.ChatTool{}, false
+	}
+
+	parameters := firstNonEmptyRawMessage(tool.Parameters, tool.InputSchema, tool.InputSchemaCamel)
+	if len(parameters) == 0 {
+		parameters = []byte(`{"type":"object","properties":{}}`)
+	}
+
+	description := tool.Description
+	if description == "" && tool.Namespace != "" {
+		description = "Dynamic tool in namespace " + tool.Namespace + "."
+	}
+
+	fn := &apicompat.ChatFunction{
+		Name:        name,
+		Description: description,
+		Parameters:  parameters,
+		Strict:      tool.Strict,
+	}
+	return apicompat.ChatTool{Type: "function", Function: fn}, true
+}
+
+func firstNonEmptyRawMessage(values ...json.RawMessage) json.RawMessage {
+	for _, value := range values {
+		if len(bytes.TrimSpace(value)) > 0 && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return value
+		}
+	}
+	return nil
 }
 
 func responsesInputToChatMessages(instructions string, input json.RawMessage) ([]apicompat.ChatMessage, error) {

@@ -389,6 +389,43 @@ func TestForwardResponsesAsChatCompletions_StreamConvertsToolCalls(t *testing.T)
 	require.Equal(t, 7, result.Usage.OutputTokens)
 }
 
+func TestResponsesBodyToChatCompletionsBody_ConvertsDynamicTools(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"gpt-5.4",
+		"input":"今天的AI新闻",
+		"tools":[
+			{
+				"type":"dynamic",
+				"namespace":"t3_browser",
+				"name":"browser_goto",
+				"description":"Navigate a T3 in-app browser tab to a URL.",
+				"inputSchema":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}
+			}
+		],
+		"dynamic_tools":[
+			{
+				"namespace":"t3_browser",
+				"name":"browser_dom_snapshot",
+				"description":"Read a compact text snapshot of the current DOM.",
+				"input_schema":{"type":"object","properties":{}}
+			}
+		],
+		"stream":true
+	}`)
+
+	got, err := responsesBodyToChatCompletionsBody(body, "deepseek-chat")
+	require.NoError(t, err)
+	require.Equal(t, "deepseek-chat", gjson.GetBytes(got, "model").String())
+	require.Equal(t, "function", gjson.GetBytes(got, "tools.0.type").String())
+	require.Equal(t, "browser_goto", gjson.GetBytes(got, "tools.0.function.name").String())
+	require.Equal(t, "object", gjson.GetBytes(got, "tools.0.function.parameters.type").String())
+	require.Equal(t, "url", gjson.GetBytes(got, "tools.0.function.parameters.required.0").String())
+	require.Equal(t, "browser_dom_snapshot", gjson.GetBytes(got, "tools.1.function.name").String())
+	require.Equal(t, "object", gjson.GetBytes(got, "tools.1.function.parameters.type").String())
+}
+
 func TestForwardResponsesAsChatCompletions_NonStreamConvertsToolCalls(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
