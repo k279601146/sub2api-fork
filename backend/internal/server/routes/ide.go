@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
@@ -104,6 +103,16 @@ func RegisterIDERoutes(
 		}), h.IDEAuth.Approve)
 	}
 
+	publicAPI := r.Group("/ide/api")
+	{
+		publicAPI.POST("/installations/heartbeat", rateLimiter.LimitWithOptions("ide-installation-heartbeat", 120, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailOpen,
+		}), ideInstallationHeartbeatResponse(h.IDEAuth.EntClient(), h.IDEAuth))
+		publicAPI.POST("/telemetry", rateLimiter.LimitWithOptions("ide-telemetry", 120, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailOpen,
+		}), ideTelemetryResponse(h.IDEAuth.EntClient(), h.IDEAuth))
+	}
+
 	authenticated := r.Group("/ide")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(servermiddleware.BackendModeUserGuard(settingService))
@@ -136,7 +145,6 @@ func RegisterIDERoutes(
 				version.GET("/app", ideVersionResponse("app", h.IDEAuth.EntClient()))
 				version.GET("/engine", ideVersionResponse("engine", h.IDEAuth.EntClient()))
 			}
-			api.POST("/telemetry", ideTelemetryResponse())
 		}
 	}
 }
@@ -149,6 +157,9 @@ func RegisterIDEAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ide.GET("/stats", h.IDEAuth.Stats)
 		ide.GET("/releases", ideAdminListReleases(h.IDEAuth.EntClient()))
 		ide.POST("/releases", ideAdminPublishRelease(h.IDEAuth.EntClient()))
+		ide.GET("/installations", ideAdminListInstallations(h.IDEAuth.EntClient()))
+		ide.GET("/problems", ideAdminListProblems(h.IDEAuth.EntClient()))
+		ide.GET("/problems/:id/events", ideAdminListProblemEvents(h.IDEAuth.EntClient()))
 	}
 }
 
@@ -375,38 +386,6 @@ func ideAdminPublishRelease(entClient *dbent.Client) gin.HandlerFunc {
 			"message": "success",
 			"data":    release,
 		})
-	}
-}
-
-func ideTelemetryResponse() gin.HandlerFunc {
-	type telemetryEvent struct {
-		Type      string         `json:"type"`
-		Timestamp string         `json:"timestamp"`
-		Data      map[string]any `json:"data"`
-	}
-	type telemetryRequest struct {
-		Events []telemetryEvent `json:"events"`
-	}
-
-	return func(c *gin.Context) {
-		var raw json.RawMessage
-		if err := c.ShouldBindJSON(&raw); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid telemetry payload"})
-			return
-		}
-		var req telemetryRequest
-		if err := json.Unmarshal(raw, &req); err != nil || req.Events == nil {
-			if err := json.Unmarshal(raw, &req.Events); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid telemetry payload"})
-				return
-			}
-		}
-		if len(req.Events) > 100 {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"code": 413, "message": "too many telemetry events"})
-			return
-		}
-
-		c.Status(http.StatusNoContent)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -55,12 +56,31 @@ func Logger() gin.HandlerFunc {
 		if model != "" {
 			fields = append(fields, zap.String("model", model))
 		}
+		fields = appendLatencyField(c, fields, service.OpsAuthLatencyMsKey, "auth_latency_ms")
+		fields = appendLatencyField(c, fields, service.OpsRoutingLatencyMsKey, "routing_latency_ms")
+		fields = appendLatencyField(c, fields, service.OpsUpstreamLatencyMsKey, "upstream_latency_ms")
+		fields = appendLatencyField(c, fields, service.OpsResponseLatencyMsKey, "response_latency_ms")
+		fields = appendLatencyField(c, fields, service.OpsTimeToFirstTokenMsKey, "time_to_first_token_ms")
 
-		l := logger.FromContext(c.Request.Context()).With(fields...)
+		l := logger.FromContext(c.Request.Context()).Named("http.access").With(fields...)
 		l.Info("http request completed", zap.Time("completed_at", endTime))
 
 		if len(c.Errors) > 0 {
 			l.Warn("http request contains gin errors", zap.String("errors", c.Errors.String()))
 		}
 	}
+}
+
+func appendLatencyField(c *gin.Context, fields []zap.Field, contextKey string, fieldName string) []zap.Field {
+	value, exists := c.Get(contextKey)
+	if !exists {
+		return fields
+	}
+	switch typed := value.(type) {
+	case int64:
+		return append(fields, zap.Int64(fieldName, typed))
+	case int:
+		return append(fields, zap.Int(fieldName, typed))
+	}
+	return fields
 }

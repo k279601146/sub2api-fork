@@ -771,6 +771,8 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       expandOnly: true,
       children: [
+        { path: '/admin/ide/installations', label: t('nav.ideInstallations'), icon: ServerIcon },
+        { path: '/admin/ide/problems', label: t('nav.ideProblems'), icon: ChartIcon },
         { path: '/admin/ide/sessions', label: t('nav.ideSessions'), icon: UsersIcon },
         { path: '/admin/ide/releases', label: t('nav.ideReleases'), icon: ServerIcon },
         { path: '/admin/ide/stats', label: t('nav.ideStats'), icon: ChartIcon },

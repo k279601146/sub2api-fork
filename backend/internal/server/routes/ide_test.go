@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,6 +54,7 @@ func TestIDERoutesExposeClientUsageAndPlanAPIs(t *testing.T) {
 		http.MethodGet + " /ide/api/plan/progress",
 		http.MethodGet + " /ide/api/version/app",
 		http.MethodGet + " /ide/api/version/engine",
+		http.MethodPost + " /ide/api/installations/heartbeat",
 		http.MethodPost + " /ide/api/telemetry",
 	} {
 		require.NotEmpty(t, registered[route], "missing route %s", route)
@@ -79,6 +81,9 @@ func TestIDEAdminRoutesExposeSessionStatsAndReleaseManagement(t *testing.T) {
 		http.MethodGet + " /api/v1/admin/ide/stats",
 		http.MethodGet + " /api/v1/admin/ide/releases",
 		http.MethodPost + " /api/v1/admin/ide/releases",
+		http.MethodGet + " /api/v1/admin/ide/installations",
+		http.MethodGet + " /api/v1/admin/ide/problems",
+		http.MethodGet + " /api/v1/admin/ide/problems/:id/events",
 	} {
 		require.NotEmpty(t, registered[route], "missing route %s", route)
 	}
@@ -194,7 +199,7 @@ func TestIDEAdminPublishedReleaseFeedsVersionEndpoint(t *testing.T) {
 func TestIDETelemetryResponseAcceptsBoundedBatch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/ide/api/telemetry", ideTelemetryResponse())
+	router.POST("/ide/api/telemetry", ideTelemetryResponse(nil, nil))
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/ide/api/telemetry", strings.NewReader(`{"events":[{"type":"ttft","timestamp":"2026-05-10T00:00:00Z","data":{"duration_ms":123}}]}`))
@@ -207,7 +212,7 @@ func TestIDETelemetryResponseAcceptsBoundedBatch(t *testing.T) {
 func TestIDETelemetryResponseAcceptsRawEventArray(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/ide/api/telemetry", ideTelemetryResponse())
+	router.POST("/ide/api/telemetry", ideTelemetryResponse(nil, nil))
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/ide/api/telemetry", strings.NewReader(`[{"type":"admin_probe","timestamp":"2026-05-10T00:00:00Z","data":{"source":"admin_console"}}]`))
@@ -215,4 +220,77 @@ func TestIDETelemetryResponseAcceptsRawEventArray(t *testing.T) {
 	router.ServeHTTP(recorder, req)
 
 	require.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestIDEInstallationHeartbeatAndProblemAggregationMemoryFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetIDETelemetryMemoryForTest()
+	router := gin.New()
+	router.POST("/ide/api/installations/heartbeat", ideInstallationHeartbeatResponse(nil, nil))
+	router.POST("/ide/api/telemetry", ideTelemetryResponse(nil, nil))
+	router.GET("/api/v1/admin/ide/installations", ideAdminListInstallations(nil))
+	router.GET("/api/v1/admin/ide/problems", ideAdminListProblems(nil))
+	router.GET("/api/v1/admin/ide/problems/:id/events", ideAdminListProblemEvents(nil))
+
+	heartbeat := httptest.NewRecorder()
+	heartbeatReq := httptest.NewRequest(http.MethodPost, "/ide/api/installations/heartbeat", strings.NewReader(`{
+		"installation_id":"inst-1",
+		"device_id":"device-1",
+		"app_version":"1.2.3",
+		"platform":"win32",
+		"arch":"x64",
+		"channel":"Alpha",
+		"engine_version":"0.9.0",
+		"reason":"startup"
+	}`))
+	heartbeatReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(heartbeat, heartbeatReq)
+	require.Equal(t, http.StatusOK, heartbeat.Code)
+
+	telemetry := httptest.NewRecorder()
+	telemetryReq := httptest.NewRequest(http.MethodPost, "/ide/api/telemetry", strings.NewReader(`{
+		"events":[{
+			"type":"backend_start_failed",
+			"timestamp":"2026-05-10T00:00:00Z",
+			"appVersion":"1.2.3",
+			"platform":"win32",
+			"arch":"x64",
+			"engineVersion":"0.9.0",
+			"installationId":"inst-1",
+			"deviceId":"device-1",
+			"data":{"component":"backend","summary":"spawn failed","path":"C:/secret/project","token":"secret"}
+		}]
+	}`))
+	telemetryReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(telemetry, telemetryReq)
+	require.Equal(t, http.StatusNoContent, telemetry.Code)
+
+	installations := httptest.NewRecorder()
+	router.ServeHTTP(installations, httptest.NewRequest(http.MethodGet, "/api/v1/admin/ide/installations?has_error=true", nil))
+	require.Equal(t, http.StatusOK, installations.Code)
+	require.Contains(t, installations.Body.String(), `"installation_id":"inst-1"`)
+	require.Contains(t, installations.Body.String(), `"with_errors":1`)
+
+	problems := httptest.NewRecorder()
+	router.ServeHTTP(problems, httptest.NewRequest(http.MethodGet, "/api/v1/admin/ide/problems", nil))
+	require.Equal(t, http.StatusOK, problems.Code)
+	require.Contains(t, problems.Body.String(), `"event_type":"backend_start_failed"`)
+	require.Contains(t, problems.Body.String(), `"occurrence_count":1`)
+
+	var problemEnvelope struct {
+		Data struct {
+			Items []struct {
+				ID int64 `json:"id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(problems.Body.Bytes(), &problemEnvelope))
+	require.Len(t, problemEnvelope.Data.Items, 1)
+
+	events := httptest.NewRecorder()
+	router.ServeHTTP(events, httptest.NewRequest(http.MethodGet, "/api/v1/admin/ide/problems/"+strconv.FormatInt(problemEnvelope.Data.Items[0].ID, 10)+"/events", nil))
+	require.Equal(t, http.StatusOK, events.Code)
+	require.Contains(t, events.Body.String(), `"summary":"spawn failed"`)
+	require.NotContains(t, events.Body.String(), "secret")
+	require.NotContains(t, events.Body.String(), "C:/secret/project")
 }

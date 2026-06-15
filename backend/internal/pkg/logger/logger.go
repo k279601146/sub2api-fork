@@ -267,14 +267,16 @@ func buildLogger(options InitOptions) (*zap.Logger, zap.AtomicLevel, error) {
 	cores := make([]zapcore.Core, 0, 3)
 
 	if options.Output.ToStdout {
+		consoleLevel, _ := parseLevel(options.Output.ConsoleLevel)
+		consoleFilter := newConsoleFilter(consoleLevel, options.Output.ConsoleAllowComponents)
 		infoPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 			return lvl >= atomic.Level() && lvl < zapcore.WarnLevel
 		})
 		errPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 			return lvl >= atomic.Level() && lvl >= zapcore.WarnLevel
 		})
-		cores = append(cores, zapcore.NewCore(enc, zapcore.Lock(os.Stdout), infoPriority))
-		cores = append(cores, zapcore.NewCore(enc, zapcore.Lock(os.Stderr), errPriority))
+		cores = append(cores, consoleFilter.Wrap(zapcore.NewCore(enc, zapcore.Lock(os.Stdout), infoPriority)))
+		cores = append(cores, consoleFilter.Wrap(zapcore.NewCore(enc, zapcore.Lock(os.Stderr), errPriority)))
 	}
 
 	if options.Output.ToFile {
@@ -335,6 +337,79 @@ func buildFileCore(enc zapcore.Encoder, atomic zap.AtomicLevel, options InitOpti
 		LocalTime:  options.Rotation.LocalTime,
 	}
 	return zapcore.NewCore(enc, zapcore.AddSync(lj), atomic), filePath, nil
+}
+
+type consoleFilter struct {
+	minLevel           zapcore.Level
+	allowComponents    map[string]struct{}
+	allowAllComponents bool
+}
+
+func newConsoleFilter(minLevel zapcore.Level, allowComponents []string) consoleFilter {
+	filter := consoleFilter{
+		minLevel:        minLevel,
+		allowComponents: make(map[string]struct{}, len(allowComponents)),
+	}
+	for _, component := range allowComponents {
+		component = strings.TrimSpace(component)
+		if component == "" {
+			continue
+		}
+		if component == "*" {
+			filter.allowAllComponents = true
+			continue
+		}
+		filter.allowComponents[component] = struct{}{}
+	}
+	return filter
+}
+
+func (f consoleFilter) Wrap(core zapcore.Core) zapcore.Core {
+	return &consoleFilterCore{core: core, filter: f}
+}
+
+func (f consoleFilter) allows(entry zapcore.Entry) bool {
+	if entry.Level >= f.minLevel {
+		return true
+	}
+	if f.allowAllComponents && strings.TrimSpace(entry.LoggerName) != "" {
+		return true
+	}
+	if _, ok := f.allowComponents[entry.LoggerName]; ok {
+		return true
+	}
+	return false
+}
+
+type consoleFilterCore struct {
+	core   zapcore.Core
+	filter consoleFilter
+}
+
+func (c *consoleFilterCore) Enabled(level zapcore.Level) bool {
+	return c.core.Enabled(level)
+}
+
+func (c *consoleFilterCore) With(fields []zapcore.Field) zapcore.Core {
+	return &consoleFilterCore{
+		core:   c.core.With(fields),
+		filter: c.filter,
+	}
+}
+
+func (c *consoleFilterCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if !c.filter.allows(entry) {
+		return ce
+	}
+	return c.core.Check(entry, ce)
+}
+
+func (c *consoleFilterCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	return c.core.Write(entry, fields)
+}
+
+func (c *consoleFilterCore) Sync() error {
+	return c.core.Sync()
 }
 
 type sinkCore struct {

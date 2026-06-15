@@ -111,9 +111,11 @@ type LogConfig struct {
 }
 
 type LogOutputConfig struct {
-	ToStdout bool   `mapstructure:"to_stdout"`
-	ToFile   bool   `mapstructure:"to_file"`
-	FilePath string `mapstructure:"file_path"`
+	ToStdout               bool     `mapstructure:"to_stdout"`
+	ToFile                 bool     `mapstructure:"to_file"`
+	FilePath               string   `mapstructure:"file_path"`
+	ConsoleLevel           string   `mapstructure:"console_level"`
+	ConsoleAllowComponents []string `mapstructure:"console_allow_components"`
 }
 
 type LogRotationConfig struct {
@@ -1433,6 +1435,8 @@ func setDefaults() {
 	viper.SetDefault("log.output.to_stdout", true)
 	viper.SetDefault("log.output.to_file", true)
 	viper.SetDefault("log.output.file_path", "")
+	viper.SetDefault("log.output.console_level", "warn")
+	viper.SetDefault("log.output.console_allow_components", []string{"http.access"})
 	viper.SetDefault("log.rotation.max_size_mb", 100)
 	viper.SetDefault("log.rotation.max_backups", 10)
 	viper.SetDefault("log.rotation.max_age_days", 7)
@@ -1847,6 +1851,13 @@ func (c *Config) Validate() error {
 	}
 	if !c.Log.Output.ToStdout && !c.Log.Output.ToFile {
 		return fmt.Errorf("log.output.to_stdout and log.output.to_file cannot both be false")
+	}
+	switch c.Log.Output.ConsoleLevel {
+	case "debug", "info", "warn", "error":
+	case "":
+		return fmt.Errorf("log.output.console_level is required")
+	default:
+		return fmt.Errorf("log.output.console_level must be one of: debug/info/warn/error")
 	}
 	if c.Log.Rotation.MaxSizeMB <= 0 {
 		return fmt.Errorf("log.rotation.max_size_mb must be positive")

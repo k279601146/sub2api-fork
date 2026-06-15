@@ -11,9 +11,11 @@ func OptionsFromConfig(cfg config.LogConfig) InitOptions {
 		Caller:          cfg.Caller,
 		StacktraceLevel: cfg.StacktraceLevel,
 		Output: OutputOptions{
-			ToStdout: cfg.Output.ToStdout,
-			ToFile:   cfg.Output.ToFile,
-			FilePath: cfg.Output.FilePath,
+			ToStdout:               cfg.Output.ToStdout,
+			ToFile:                 cfg.Output.ToFile,
+			FilePath:               cfg.Output.FilePath,
+			ConsoleLevel:           cfg.Output.ConsoleLevel,
+			ConsoleAllowComponents: cfg.Output.ConsoleAllowComponents,
 		},
 		Rotation: RotationOptions{
 			MaxSizeMB:  cfg.Rotation.MaxSizeMB,

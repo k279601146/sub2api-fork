@@ -1452,6 +1452,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "log.output.to_stdout and log.output.to_file cannot both be false",
 		},
 		{
+			name:    "log console level invalid",
+			mutate:  func(c *Config) { c.Log.Output.ConsoleLevel = "notice" },
+			wantErr: "log.output.console_level",
+		},
+		{
 			name:    "log rotation size",
 			mutate:  func(c *Config) { c.Log.Rotation.MaxSizeMB = 0 },
 			wantErr: "log.rotation.max_size_mb",

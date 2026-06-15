@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 func TestInit_DualOutput(t *testing.T) {
@@ -88,6 +90,91 @@ func TestInit_DualOutput(t *testing.T) {
 	fileText := string(fileBytes)
 	if !strings.Contains(fileText, "dual-output-info") || !strings.Contains(fileText, "dual-output-warn") {
 		t.Fatalf("file missing logs: %s", fileText)
+	}
+}
+
+func TestInit_ConsoleLevelAllowsAccessComponent(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "logger-console-filter-test-*")
+	if err != nil {
+		t.Fatalf("create temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+	logPath := filepath.Join(tmpDir, "logs", "sub2api.log")
+
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stderr pipe: %v", err)
+	}
+	os.Stdout = stdoutW
+	os.Stderr = stderrW
+	t.Cleanup(func() {
+		os.Stdout = origStdout
+		os.Stderr = origStderr
+		_ = stdoutR.Close()
+		_ = stderrR.Close()
+		_ = stdoutW.Close()
+		_ = stderrW.Close()
+	})
+
+	err = Init(InitOptions{
+		Level:       "info",
+		Format:      "json",
+		ServiceName: "sub2api",
+		Environment: "test",
+		Output: OutputOptions{
+			ToStdout:               true,
+			ToFile:                 true,
+			FilePath:               logPath,
+			ConsoleLevel:           "warn",
+			ConsoleAllowComponents: []string{"http.access"},
+		},
+		Rotation: RotationOptions{
+			MaxSizeMB:  10,
+			MaxBackups: 2,
+			MaxAgeDays: 1,
+		},
+		Sampling: SamplingOptions{Enabled: false},
+	})
+	if err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+
+	L().Info("general-info")
+	L().Named("http.access").Info("access-info", zap.String("component", "http.access"))
+	L().Warn("general-warn")
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	stdoutBytes, _ := io.ReadAll(stdoutR)
+	stderrBytes, _ := io.ReadAll(stderrR)
+	stdoutText := string(stdoutBytes)
+	stderrText := string(stderrBytes)
+
+	if strings.Contains(stdoutText, "general-info") {
+		t.Fatalf("stdout should filter regular info logs: %s", stdoutText)
+	}
+	if !strings.Contains(stdoutText, "access-info") {
+		t.Fatalf("stdout missing allowed access log: %s", stdoutText)
+	}
+	if !strings.Contains(stderrText, "general-warn") {
+		t.Fatalf("stderr missing warn log: %s", stderrText)
+	}
+
+	fileBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	fileText := string(fileBytes)
+	for _, want := range []string{"general-info", "access-info", "general-warn"} {
+		if !strings.Contains(fileText, want) {
+			t.Fatalf("file log missing %q: %s", want, fileText)
+		}
 	}
 }
 

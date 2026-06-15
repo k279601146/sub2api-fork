@@ -83,6 +83,106 @@ export interface IDEStatsResponse {
   total_sessions: number
 }
 
+export interface IDEDistributionItem {
+  name: string
+  count: number
+}
+
+export interface IDEInstallationInfo {
+  id: number
+  installation_id: string
+  device_id: string
+  user_id?: number
+  app_version?: string
+  platform?: string
+  arch?: string
+  channel?: string
+  engine_version?: string
+  first_seen_at: string
+  last_seen_at: string
+  last_error_at?: string
+  status: string
+}
+
+export interface IDEInstallationStats {
+  total_installations: number
+  active_devices: number
+  recently_active: number
+  with_errors: number
+  version_distribution: IDEDistributionItem[]
+  platform_distribution: IDEDistributionItem[]
+}
+
+export interface IDEInstallationsParams {
+  limit?: number
+  offset?: number
+  user_id?: number
+  version?: string
+  platform?: string
+  status?: string
+  has_error?: boolean
+  active_days?: number
+}
+
+export interface IDEInstallationsResponse {
+  items: IDEInstallationInfo[]
+  total: number
+  stats: IDEInstallationStats
+}
+
+export interface IDEProblemInfo {
+  id: number
+  problem_fingerprint: string
+  event_type: string
+  severity: string
+  summary: string
+  first_seen_at: string
+  last_seen_at: string
+  last_app_version?: string
+  last_platform?: string
+  last_arch?: string
+  occurrence_count: number
+  affected_installation_count: number
+  status: string
+  version_distribution?: Record<string, number>
+  platform_distribution?: Record<string, number>
+}
+
+export interface IDEProblemEvent {
+  id: number
+  installation_id: string
+  device_id: string
+  user_id?: number
+  event_type: string
+  severity: string
+  app_version?: string
+  platform?: string
+  arch?: string
+  engine_version?: string
+  summary: string
+  metadata: Record<string, unknown>
+  occurred_at: string
+}
+
+export interface IDEProblemsParams {
+  limit?: number
+  offset?: number
+  event_type?: string
+  version?: string
+  platform?: string
+  status?: string
+}
+
+export interface IDEProblemsResponse {
+  items: IDEProblemInfo[]
+  total: number
+}
+
+export interface IDEProblemEventsResponse {
+  items: IDEProblemEvent[]
+  total: number
+}
+
 export interface IDEPublishReleaseRequest {
   kind: 'app' | 'engine'
   version: string
@@ -129,6 +229,21 @@ export async function getStats(): Promise<IDEStatsResponse> {
   return data
 }
 
+export async function listInstallations(params: IDEInstallationsParams = {}): Promise<IDEInstallationsResponse> {
+  const { data } = await ideRootClient.get<IDEInstallationsResponse>('/api/v1/admin/ide/installations', { params })
+  return data
+}
+
+export async function listProblems(params: IDEProblemsParams = {}): Promise<IDEProblemsResponse> {
+  const { data } = await ideRootClient.get<IDEProblemsResponse>('/api/v1/admin/ide/problems', { params })
+  return data
+}
+
+export async function listProblemEvents(id: number | string, params: { limit?: number } = {}): Promise<IDEProblemEventsResponse> {
+  const { data } = await ideRootClient.get<IDEProblemEventsResponse>(`/api/v1/admin/ide/problems/${encodeURIComponent(id)}/events`, { params })
+  return data
+}
+
 export async function listReleases(): Promise<IDEReleasesResponse> {
   const { data } = await ideRootClient.get<IDEReleasesResponse>('/api/v1/admin/ide/releases')
   return data
@@ -145,6 +260,9 @@ export default {
   listSessions,
   revokeSession,
   getStats,
+  listInstallations,
+  listProblems,
+  listProblemEvents,
   listReleases,
   publishRelease,
 }

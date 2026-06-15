@@ -91,6 +91,21 @@ func (h *AuthHandler) EntClient() *dbent.Client {
 	return h.authService.EntClient()
 }
 
+func (h *AuthHandler) UserIDFromAuthorizationHeader(ctx context.Context, authHeader string) (int64, bool) {
+	if h == nil {
+		return 0, false
+	}
+	tokenString := bearerTokenFromHeader(authHeader)
+	if tokenString == "" {
+		return 0, false
+	}
+	user, err := h.userFromAccessToken(ctx, tokenString)
+	if err != nil {
+		return 0, false
+	}
+	return user.ID, true
+}
+
 type TokenRequest struct {
 	GrantType     string `json:"grant_type"`
 	AccessToken   string `json:"access_token"`

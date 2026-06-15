@@ -551,7 +551,31 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/admin/ide',
-    redirect: '/admin/ide/sessions'
+    redirect: '/admin/ide/installations'
+  },
+  {
+    path: '/admin/ide/installations',
+    name: 'AdminIDEInstallations',
+    component: () => import('@/views/admin/ide/IDEInstallationsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'IDE Installations',
+      titleKey: 'admin.ide.installations.title',
+      descriptionKey: 'admin.ide.installations.description'
+    }
+  },
+  {
+    path: '/admin/ide/problems',
+    name: 'AdminIDEProblems',
+    component: () => import('@/views/admin/ide/IDEProblemsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'IDE Problems',
+      titleKey: 'admin.ide.problems.title',
+      descriptionKey: 'admin.ide.problems.description'
+    }
   },
   {
     path: '/admin/ide/sessions',

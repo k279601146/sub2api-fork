@@ -26,9 +26,11 @@ type InitOptions struct {
 }
 
 type OutputOptions struct {
-	ToStdout bool
-	ToFile   bool
-	FilePath string
+	ToStdout               bool
+	ToFile                 bool
+	FilePath               string
+	ConsoleLevel           string
+	ConsoleAllowComponents []string
 }
 
 type RotationOptions struct {
@@ -71,6 +73,11 @@ func (o InitOptions) normalized() InitOptions {
 		out.Output.ToStdout = true
 	}
 	out.Output.FilePath = resolveLogFilePath(out.Output.FilePath)
+	out.Output.ConsoleLevel = strings.ToLower(strings.TrimSpace(out.Output.ConsoleLevel))
+	if out.Output.ConsoleLevel == "" {
+		out.Output.ConsoleLevel = out.Level
+	}
+	out.Output.ConsoleAllowComponents = normalizeComponentList(out.Output.ConsoleAllowComponents)
 	if out.Rotation.MaxSizeMB <= 0 {
 		out.Rotation.MaxSizeMB = 100
 	}
@@ -110,8 +117,9 @@ func bootstrapOptions() InitOptions {
 		ServiceName: "sub2api",
 		Environment: "bootstrap",
 		Output: OutputOptions{
-			ToStdout: true,
-			ToFile:   false,
+			ToStdout:     true,
+			ToFile:       false,
+			ConsoleLevel: "info",
 		},
 		Rotation: RotationOptions{
 			MaxSizeMB:  100,
@@ -126,6 +134,26 @@ func bootstrapOptions() InitOptions {
 			Thereafter: 100,
 		},
 	}
+}
+
+func normalizeComponentList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func parseLevel(level string) (Level, bool) {
