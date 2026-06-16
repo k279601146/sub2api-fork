@@ -32,10 +32,16 @@ const (
 	contentModerationAPIKeysModeAppend  = "append"
 	contentModerationAPIKeysModeReplace = "replace"
 
-	ContentModerationActionAllow     = "allow"
-	ContentModerationActionBlock     = "block"
-	ContentModerationActionHashBlock = "hash_block"
-	ContentModerationActionError     = "error"
+	ContentModerationActionAllow                 = "allow"
+	ContentModerationActionBlock                 = "block"
+	ContentModerationActionHashBlock             = "hash_block"
+	ContentModerationActionError                 = "error"
+	ContentModerationActionDouyinBlock           = "douyin_block"
+	ContentModerationActionDouyinPass            = "douyin_pass"
+	ContentModerationActionClassifierBlock       = "classifier_block"
+	ContentModerationActionClassifierAllow       = "classifier_allow"
+	ContentModerationActionClassifierErrorBlock  = "classifier_error_block"
+	ContentModerationActionChinaConfigErrorBlock = "china_gateway_config_error_block"
 
 	ContentModerationProtocolAnthropicMessages = "anthropic_messages"
 	ContentModerationProtocolOpenAIResponses   = "openai_responses"
@@ -64,6 +70,10 @@ const (
 	defaultContentModerationNonHitRetentionDays  = 3
 	maxContentModerationRetentionDays            = 3650
 	maxContentModerationNonHitRetentionDays      = 3
+	defaultChinaGatewayDouyinTimeoutMS           = 800
+	defaultChinaGatewayClassifierTimeoutMS       = 1200
+	defaultChinaGatewayBanThreshold              = 2
+	defaultChinaGatewayViolationWindowHours      = 1
 	contentModerationKeyRateLimitFreezeDuration  = time.Minute
 	contentModerationKeyAuthFreezeDuration       = 10 * time.Minute
 	contentModerationKeyHTTPErrorFreezeDuration  = 10 * time.Second
@@ -142,35 +152,55 @@ type ContentModerationConfig struct {
 	HitRetentionDays     int                `json:"hit_retention_days"`
 	NonHitRetentionDays  int                `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  bool               `json:"pre_hash_check_enabled"`
+	DouyinBaseURL        string             `json:"douyin_base_url,omitempty"`
+	DouyinAppID          string             `json:"douyin_app_id,omitempty"`
+	DouyinAppSecret      string             `json:"douyin_app_secret,omitempty"`
+	DouyinTimeoutMS      int                `json:"douyin_timeout_ms"`
+	ClassifierBaseURL    string             `json:"classifier_base_url,omitempty"`
+	ClassifierAPIKey     string             `json:"classifier_api_key,omitempty"`
+	ClassifierModel      string             `json:"classifier_model,omitempty"`
+	ClassifierTimeoutMS  int                `json:"classifier_timeout_ms"`
 }
 
 type ContentModerationConfigView struct {
-	Enabled              bool                            `json:"enabled"`
-	Mode                 string                          `json:"mode"`
-	BaseURL              string                          `json:"base_url"`
-	Model                string                          `json:"model"`
-	APIKeyConfigured     bool                            `json:"api_key_configured"`
-	APIKeyMasked         string                          `json:"api_key_masked"`
-	APIKeyCount          int                             `json:"api_key_count"`
-	APIKeyMasks          []string                        `json:"api_key_masks"`
-	APIKeyStatuses       []ContentModerationAPIKeyStatus `json:"api_key_statuses"`
-	TimeoutMS            int                             `json:"timeout_ms"`
-	SampleRate           int                             `json:"sample_rate"`
-	AllGroups            bool                            `json:"all_groups"`
-	GroupIDs             []int64                         `json:"group_ids"`
-	RecordNonHits        bool                            `json:"record_non_hits"`
-	WorkerCount          int                             `json:"worker_count"`
-	QueueSize            int                             `json:"queue_size"`
-	BlockStatus          int                             `json:"block_status"`
-	BlockMessage         string                          `json:"block_message"`
-	EmailOnHit           bool                            `json:"email_on_hit"`
-	AutoBanEnabled       bool                            `json:"auto_ban_enabled"`
-	BanThreshold         int                             `json:"ban_threshold"`
-	ViolationWindowHours int                             `json:"violation_window_hours"`
-	RetryCount           int                             `json:"retry_count"`
-	HitRetentionDays     int                             `json:"hit_retention_days"`
-	NonHitRetentionDays  int                             `json:"non_hit_retention_days"`
-	PreHashCheckEnabled  bool                            `json:"pre_hash_check_enabled"`
+	Enabled                    bool                            `json:"enabled"`
+	Mode                       string                          `json:"mode"`
+	BaseURL                    string                          `json:"base_url"`
+	Model                      string                          `json:"model"`
+	APIKeyConfigured           bool                            `json:"api_key_configured"`
+	APIKeyMasked               string                          `json:"api_key_masked"`
+	APIKeyCount                int                             `json:"api_key_count"`
+	APIKeyMasks                []string                        `json:"api_key_masks"`
+	APIKeyStatuses             []ContentModerationAPIKeyStatus `json:"api_key_statuses"`
+	TimeoutMS                  int                             `json:"timeout_ms"`
+	SampleRate                 int                             `json:"sample_rate"`
+	AllGroups                  bool                            `json:"all_groups"`
+	GroupIDs                   []int64                         `json:"group_ids"`
+	RecordNonHits              bool                            `json:"record_non_hits"`
+	WorkerCount                int                             `json:"worker_count"`
+	QueueSize                  int                             `json:"queue_size"`
+	BlockStatus                int                             `json:"block_status"`
+	BlockMessage               string                          `json:"block_message"`
+	EmailOnHit                 bool                            `json:"email_on_hit"`
+	AutoBanEnabled             bool                            `json:"auto_ban_enabled"`
+	BanThreshold               int                             `json:"ban_threshold"`
+	ViolationWindowHours       int                             `json:"violation_window_hours"`
+	RetryCount                 int                             `json:"retry_count"`
+	HitRetentionDays           int                             `json:"hit_retention_days"`
+	NonHitRetentionDays        int                             `json:"non_hit_retention_days"`
+	PreHashCheckEnabled        bool                            `json:"pre_hash_check_enabled"`
+	ChinaGatewayEnabled        bool                            `json:"china_gateway_enabled"`
+	DouyinBaseURL              string                          `json:"douyin_base_url,omitempty"`
+	DouyinAppIDConfigured      bool                            `json:"douyin_app_id_configured"`
+	DouyinAppIDMasked          string                          `json:"douyin_app_id_masked"`
+	DouyinAppSecretConfigured  bool                            `json:"douyin_app_secret_configured"`
+	DouyinAppSecretMasked      string                          `json:"douyin_app_secret_masked"`
+	DouyinTimeoutMS            int                             `json:"douyin_timeout_ms"`
+	ClassifierBaseURL          string                          `json:"classifier_base_url,omitempty"`
+	ClassifierAPIKeyConfigured bool                            `json:"classifier_api_key_configured"`
+	ClassifierAPIKeyMasked     string                          `json:"classifier_api_key_masked"`
+	ClassifierModel            string                          `json:"classifier_model,omitempty"`
+	ClassifierTimeoutMS        int                             `json:"classifier_timeout_ms"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -240,6 +270,14 @@ type UpdateContentModerationConfigInput struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	DouyinBaseURL        *string   `json:"douyin_base_url"`
+	DouyinAppID          *string   `json:"douyin_app_id"`
+	DouyinAppSecret      *string   `json:"douyin_app_secret"`
+	DouyinTimeoutMS      *int      `json:"douyin_timeout_ms"`
+	ClassifierBaseURL    *string   `json:"classifier_base_url"`
+	ClassifierAPIKey     *string   `json:"classifier_api_key"`
+	ClassifierModel      *string   `json:"classifier_model"`
+	ClassifierTimeoutMS  *int      `json:"classifier_timeout_ms"`
 }
 
 type ContentModerationCheckInput struct {
@@ -440,6 +478,11 @@ type ContentModerationService struct {
 	lastCleanupDeletedNonHit atomic.Int64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
+	chinaGatewayEnabled      bool
+	chinaGatewayMu           sync.Mutex
+	chinaGatewayToken        string
+	chinaGatewayTokenExpiry  time.Time
+	chinaGatewayCache        map[string]chinaGatewayCachedDecision
 }
 
 type contentModerationTask struct {
@@ -483,6 +526,8 @@ func NewContentModerationService(
 		workerCount:          maxContentModerationWorkerCount,
 		asyncQueue:           make(chan contentModerationTask, maxContentModerationQueueSize),
 		keyHealth:            make(map[string]*contentModerationKeyHealth),
+		chinaGatewayEnabled:  parseChinaGatewayEnabledEnv(),
+		chinaGatewayCache:    make(map[string]chinaGatewayCachedDecision),
 	}
 	if settingRepo != nil && repo != nil {
 		for i := 0; i < svc.workerCount; i++ {
@@ -559,6 +604,30 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.PreHashCheckEnabled != nil {
 		cfg.PreHashCheckEnabled = *input.PreHashCheckEnabled
+	}
+	if input.DouyinBaseURL != nil {
+		cfg.DouyinBaseURL = strings.TrimSpace(*input.DouyinBaseURL)
+	}
+	if input.DouyinAppID != nil {
+		cfg.DouyinAppID = strings.TrimSpace(*input.DouyinAppID)
+	}
+	if input.DouyinAppSecret != nil {
+		cfg.DouyinAppSecret = strings.TrimSpace(*input.DouyinAppSecret)
+	}
+	if input.DouyinTimeoutMS != nil {
+		cfg.DouyinTimeoutMS = *input.DouyinTimeoutMS
+	}
+	if input.ClassifierBaseURL != nil {
+		cfg.ClassifierBaseURL = strings.TrimSpace(*input.ClassifierBaseURL)
+	}
+	if input.ClassifierAPIKey != nil {
+		cfg.ClassifierAPIKey = strings.TrimSpace(*input.ClassifierAPIKey)
+	}
+	if input.ClassifierModel != nil {
+		cfg.ClassifierModel = strings.TrimSpace(*input.ClassifierModel)
+	}
+	if input.ClassifierTimeoutMS != nil {
+		cfg.ClassifierTimeoutMS = *input.ClassifierTimeoutMS
 	}
 	if input.AllGroups != nil {
 		cfg.AllGroups = *input.AllGroups
@@ -669,7 +738,59 @@ func (s *ContentModerationService) TestAPIKeys(ctx context.Context, input TestCo
 
 func (s *ContentModerationService) Check(ctx context.Context, input ContentModerationCheckInput) (*ContentModerationDecision, error) {
 	allow := &ContentModerationDecision{Allowed: true, Action: ContentModerationActionAllow}
-	if s == nil || s.settingRepo == nil || s.repo == nil {
+	if s == nil || s.settingRepo == nil {
+		slog.Info("content_moderation.skip_unavailable",
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"group_id", contentModerationLogGroupID(input.GroupID),
+			"endpoint", input.Endpoint,
+			"protocol", input.Protocol)
+		return allow, nil
+	}
+
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		slog.Warn("content_moderation.skip_config_load_failed",
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"group_id", contentModerationLogGroupID(input.GroupID),
+			"endpoint", input.Endpoint,
+			"protocol", input.Protocol,
+			"error", err)
+		if s.chinaGatewayEnabled {
+			return s.chinaGatewayConfigErrorDecision(ctx, input, nil, "中国地区内容安全网关配置加载失败"), nil
+		}
+		return allow, nil
+	}
+
+	content := ExtractContentModerationInput(input.Protocol, input.Body)
+	if content.IsEmpty() {
+		slog.Info("content_moderation.skip_empty_input",
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"group_id", contentModerationLogGroupID(input.GroupID),
+			"endpoint", input.Endpoint,
+			"protocol", input.Protocol,
+			"body_bytes", len(input.Body))
+		return allow, nil
+	}
+	content.Normalize()
+	slog.Info("content_moderation.input_extracted",
+		"user_id", input.UserID,
+		"api_key_id", input.APIKeyID,
+		"group_id", contentModerationLogGroupID(input.GroupID),
+		"endpoint", input.Endpoint,
+		"protocol", input.Protocol,
+		"text_runes", len([]rune(content.Text)),
+		"image_count", len(content.Images))
+	hashText := content.Hash()
+	if s.chinaGatewayEnabled {
+		if decision := s.checkChinaRegionSafetyGateway(ctx, input, cfg, content, hashText); decision != nil {
+			return decision, nil
+		}
+	}
+
+	if s.repo == nil {
 		slog.Info("content_moderation.skip_unavailable",
 			"user_id", input.UserID,
 			"api_key_id", input.APIKeyID,
@@ -685,17 +806,6 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"group_id", contentModerationLogGroupID(input.GroupID),
 			"endpoint", input.Endpoint,
 			"protocol", input.Protocol)
-		return allow, nil
-	}
-	cfg, err := s.loadConfig(ctx)
-	if err != nil {
-		slog.Warn("content_moderation.skip_config_load_failed",
-			"user_id", input.UserID,
-			"api_key_id", input.APIKeyID,
-			"group_id", contentModerationLogGroupID(input.GroupID),
-			"endpoint", input.Endpoint,
-			"protocol", input.Protocol,
-			"error", err)
 		return allow, nil
 	}
 	inScope := cfg.includesGroup(input.GroupID)
@@ -747,27 +857,6 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"configured_group_ids", cfg.GroupIDs)
 		return allow, nil
 	}
-	content := ExtractContentModerationInput(input.Protocol, input.Body)
-	if content.IsEmpty() {
-		slog.Info("content_moderation.skip_empty_input",
-			"user_id", input.UserID,
-			"api_key_id", input.APIKeyID,
-			"group_id", contentModerationLogGroupID(input.GroupID),
-			"endpoint", input.Endpoint,
-			"protocol", input.Protocol,
-			"body_bytes", len(input.Body))
-		return allow, nil
-	}
-	content.Normalize()
-	slog.Info("content_moderation.input_extracted",
-		"user_id", input.UserID,
-		"api_key_id", input.APIKeyID,
-		"group_id", contentModerationLogGroupID(input.GroupID),
-		"endpoint", input.Endpoint,
-		"protocol", input.Protocol,
-		"text_runes", len([]rune(content.Text)),
-		"image_count", len(content.Images))
-	hashText := content.Hash()
 	if cfg.PreHashCheckEnabled && s.hashCache != nil {
 		matched, err := s.hashCache.HasFlaggedInputHash(ctx, hashText)
 		if err != nil {
@@ -1208,6 +1297,14 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BASE_URL", "OpenAI Base URL 无效")
 	}
+	if _, err := url.ParseRequestURI(cfg.DouyinBaseURL); err != nil {
+		return infraerrors.BadRequest("INVALID_CHINA_GATEWAY_DOUYIN_BASE_URL", "抖音内容安全 Base URL 无效")
+	}
+	if cfg.ClassifierBaseURL != "" {
+		if _, err := url.ParseRequestURI(cfg.ClassifierBaseURL); err != nil {
+			return infraerrors.BadRequest("INVALID_CHINA_GATEWAY_CLASSIFIER_BASE_URL", "中国地区安全分类器 Base URL 无效")
+		}
+	}
 	if cfg.BlockStatus < 400 || cfg.BlockStatus > 599 {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BLOCK_STATUS", "拦截 HTTP 状态码必须在 400-599 之间")
 	}
@@ -1445,12 +1542,15 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 		BlockMessage:         defaultContentModerationBlockMessage,
 		EmailOnHit:           true,
 		AutoBanEnabled:       true,
-		BanThreshold:         defaultContentModerationBanThreshold,
-		ViolationWindowHours: defaultContentModerationViolationWindowHours,
+		BanThreshold:         defaultChinaGatewayBanThreshold,
+		ViolationWindowHours: defaultChinaGatewayViolationWindowHours,
 		RetryCount:           defaultContentModerationRetryCount,
 		HitRetentionDays:     defaultContentModerationHitRetentionDays,
 		NonHitRetentionDays:  defaultContentModerationNonHitRetentionDays,
 		PreHashCheckEnabled:  false,
+		DouyinBaseURL:        defaultChinaGatewayDouyinBaseURL,
+		DouyinTimeoutMS:      defaultChinaGatewayDouyinTimeoutMS,
+		ClassifierTimeoutMS:  defaultChinaGatewayClassifierTimeoutMS,
 	}
 }
 
@@ -1504,10 +1604,10 @@ func (cfg *ContentModerationConfig) normalize() {
 		cfg.BlockStatus = defaultContentModerationBlockHTTPStatus
 	}
 	if cfg.BanThreshold <= 0 {
-		cfg.BanThreshold = defaultContentModerationBanThreshold
+		cfg.BanThreshold = defaultChinaGatewayBanThreshold
 	}
 	if cfg.ViolationWindowHours <= 0 {
-		cfg.ViolationWindowHours = defaultContentModerationViolationWindowHours
+		cfg.ViolationWindowHours = defaultChinaGatewayViolationWindowHours
 	}
 	if cfg.RetryCount < 0 {
 		cfg.RetryCount = 0
@@ -1529,6 +1629,27 @@ func (cfg *ContentModerationConfig) normalize() {
 	}
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
 	cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), cfg.Thresholds)
+	cfg.DouyinBaseURL = strings.TrimRight(strings.TrimSpace(cfg.DouyinBaseURL), "/")
+	if cfg.DouyinBaseURL == "" {
+		cfg.DouyinBaseURL = defaultChinaGatewayDouyinBaseURL
+	}
+	cfg.DouyinAppID = strings.TrimSpace(cfg.DouyinAppID)
+	cfg.DouyinAppSecret = strings.TrimSpace(cfg.DouyinAppSecret)
+	if cfg.DouyinTimeoutMS <= 0 {
+		cfg.DouyinTimeoutMS = defaultChinaGatewayDouyinTimeoutMS
+	}
+	if cfg.DouyinTimeoutMS > maxContentModerationTimeoutMS {
+		cfg.DouyinTimeoutMS = maxContentModerationTimeoutMS
+	}
+	cfg.ClassifierBaseURL = strings.TrimRight(strings.TrimSpace(cfg.ClassifierBaseURL), "/")
+	cfg.ClassifierAPIKey = strings.TrimSpace(cfg.ClassifierAPIKey)
+	cfg.ClassifierModel = strings.TrimSpace(cfg.ClassifierModel)
+	if cfg.ClassifierTimeoutMS <= 0 {
+		cfg.ClassifierTimeoutMS = defaultChinaGatewayClassifierTimeoutMS
+	}
+	if cfg.ClassifierTimeoutMS > maxContentModerationTimeoutMS {
+		cfg.ClassifierTimeoutMS = maxContentModerationTimeoutMS
+	}
 }
 
 func (cfg *ContentModerationConfig) includesGroup(groupID *int64) bool {
@@ -1679,32 +1800,44 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		apiKeyMasked = masks[0]
 	}
 	return &ContentModerationConfigView{
-		Enabled:              cfg.Enabled,
-		Mode:                 cfg.Mode,
-		BaseURL:              cfg.BaseURL,
-		Model:                cfg.Model,
-		APIKeyConfigured:     len(keys) > 0,
-		APIKeyMasked:         apiKeyMasked,
-		APIKeyCount:          len(keys),
-		APIKeyMasks:          masks,
-		APIKeyStatuses:       s.apiKeyStatuses(keys),
-		TimeoutMS:            cfg.TimeoutMS,
-		SampleRate:           cfg.SampleRate,
-		AllGroups:            cfg.AllGroups,
-		GroupIDs:             append([]int64(nil), cfg.GroupIDs...),
-		RecordNonHits:        cfg.RecordNonHits,
-		WorkerCount:          cfg.WorkerCount,
-		QueueSize:            cfg.QueueSize,
-		BlockStatus:          cfg.BlockStatus,
-		BlockMessage:         cfg.BlockMessage,
-		EmailOnHit:           cfg.EmailOnHit,
-		AutoBanEnabled:       cfg.AutoBanEnabled,
-		BanThreshold:         cfg.BanThreshold,
-		ViolationWindowHours: cfg.ViolationWindowHours,
-		RetryCount:           cfg.RetryCount,
-		HitRetentionDays:     cfg.HitRetentionDays,
-		NonHitRetentionDays:  cfg.NonHitRetentionDays,
-		PreHashCheckEnabled:  cfg.PreHashCheckEnabled,
+		Enabled:                    cfg.Enabled,
+		Mode:                       cfg.Mode,
+		BaseURL:                    cfg.BaseURL,
+		Model:                      cfg.Model,
+		APIKeyConfigured:           len(keys) > 0,
+		APIKeyMasked:               apiKeyMasked,
+		APIKeyCount:                len(keys),
+		APIKeyMasks:                masks,
+		APIKeyStatuses:             s.apiKeyStatuses(keys),
+		TimeoutMS:                  cfg.TimeoutMS,
+		SampleRate:                 cfg.SampleRate,
+		AllGroups:                  cfg.AllGroups,
+		GroupIDs:                   append([]int64(nil), cfg.GroupIDs...),
+		RecordNonHits:              cfg.RecordNonHits,
+		WorkerCount:                cfg.WorkerCount,
+		QueueSize:                  cfg.QueueSize,
+		BlockStatus:                cfg.BlockStatus,
+		BlockMessage:               cfg.BlockMessage,
+		EmailOnHit:                 cfg.EmailOnHit,
+		AutoBanEnabled:             cfg.AutoBanEnabled,
+		BanThreshold:               cfg.BanThreshold,
+		ViolationWindowHours:       cfg.ViolationWindowHours,
+		RetryCount:                 cfg.RetryCount,
+		HitRetentionDays:           cfg.HitRetentionDays,
+		NonHitRetentionDays:        cfg.NonHitRetentionDays,
+		PreHashCheckEnabled:        cfg.PreHashCheckEnabled,
+		ChinaGatewayEnabled:        s != nil && s.chinaGatewayEnabled,
+		DouyinBaseURL:              cfg.DouyinBaseURL,
+		DouyinAppIDConfigured:      strings.TrimSpace(cfg.DouyinAppID) != "",
+		DouyinAppIDMasked:          maskSecretTail(cfg.DouyinAppID),
+		DouyinAppSecretConfigured:  strings.TrimSpace(cfg.DouyinAppSecret) != "",
+		DouyinAppSecretMasked:      maskSecretTail(cfg.DouyinAppSecret),
+		DouyinTimeoutMS:            cfg.DouyinTimeoutMS,
+		ClassifierBaseURL:          cfg.ClassifierBaseURL,
+		ClassifierAPIKeyConfigured: strings.TrimSpace(cfg.ClassifierAPIKey) != "",
+		ClassifierAPIKeyMasked:     maskSecretTail(cfg.ClassifierAPIKey),
+		ClassifierModel:            cfg.ClassifierModel,
+		ClassifierTimeoutMS:        cfg.ClassifierTimeoutMS,
 	}
 }
 

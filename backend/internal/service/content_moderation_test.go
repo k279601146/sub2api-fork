@@ -73,7 +73,8 @@ func (r *contentModerationTestSettingRepo) Delete(ctx context.Context, key strin
 }
 
 type contentModerationTestRepo struct {
-	logs []ContentModerationLog
+	logs          []ContentModerationLog
+	flaggedCounts []int
 }
 
 func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentModerationLog) error {
@@ -88,6 +89,11 @@ func (r *contentModerationTestRepo) ListLogs(ctx context.Context, filter Content
 }
 
 func (r *contentModerationTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
+	if len(r.flaggedCounts) > 0 {
+		n := r.flaggedCounts[0]
+		r.flaggedCounts = r.flaggedCounts[1:]
+		return n, nil
+	}
 	return 0, nil
 }
 
@@ -504,6 +510,8 @@ func TestExtractContentModerationInput_OpenAIResponsesCodexPayloadUsesLastUserMe
 }
 
 func TestContentModerationCheck_OpenAIResponsesRecordsNonHitForCodexPayload(t *testing.T) {
+	disableChinaGatewayForLegacyModerationTest(t)
+
 	var moderationRequest moderationAPIRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/moderations", r.URL.Path)
@@ -567,6 +575,8 @@ func TestContentModerationCheck_OpenAIResponsesRecordsNonHitForCodexPayload(t *t
 }
 
 func TestContentModerationCheck_PreBlockBlocksCodexResponsesLatestUserInput(t *testing.T) {
+	disableChinaGatewayForLegacyModerationTest(t)
+
 	var moderationRequest moderationAPIRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/moderations", r.URL.Path)
@@ -750,6 +760,8 @@ func TestContentModerationTestAPIKeys_400DoesNotFreezeAPIKey(t *testing.T) {
 }
 
 func TestContentModerationCheck_PreHashUsesRedisHashCache(t *testing.T) {
+	disableChinaGatewayForLegacyModerationTest(t)
+
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.PreHashCheckEnabled = true
@@ -792,6 +804,8 @@ func TestContentModerationCheck_PreHashUsesRedisHashCache(t *testing.T) {
 }
 
 func TestContentModerationCheck_PreBlockFlaggedWritesRedisHashCache(t *testing.T) {
+	disableChinaGatewayForLegacyModerationTest(t)
+
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
@@ -851,6 +865,229 @@ func TestContentModerationCheck_PreBlockFlaggedWritesRedisHashCache(t *testing.T
 	require.Equal(t, hashCache.recorded[0], decision.InputHash)
 	require.Equal(t, 1, requestCount)
 	require.Len(t, repo.logs, 1)
+}
+
+func TestChinaGatewayEnvDefaultEnabledAndDouyinPassAllows(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "")
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusOK, []byte(`{"data":{"tasks":[{"predicts":[{"hit":false}]}]}}`), &douyinRequests)
+	classifierServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		classifierRequests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer classifierServer.Close()
+
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	cfg.RecordNonHits = true
+	repo := &contentModerationTestRepo{}
+	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, nil, nil)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		UserID:   1001,
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"帮我修复这个 Go 测试"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, ContentModerationActionDouyinPass, decision.Action)
+	require.Equal(t, 2, douyinRequests)
+	require.Zero(t, classifierRequests)
+	require.Len(t, repo.logs, 1)
+	require.Equal(t, ContentModerationActionDouyinPass, repo.logs[0].Action)
+	require.False(t, repo.logs[0].Flagged)
+}
+
+func TestChinaGatewayEnvDisabledFallsBackToLegacySkip(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "false")
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{SettingKeyContentModerationConfig: string(rawCfg)}},
+		&contentModerationTestRepo{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"正常请求"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, ContentModerationActionAllow, decision.Action)
+}
+
+func TestChinaGatewayMissingConfigBlocks(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "true")
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{SettingKeyContentModerationConfig: string(rawCfg)}},
+		repo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"正常请求"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionChinaConfigErrorBlock, decision.Action)
+	require.Len(t, repo.logs, 1)
+	require.True(t, repo.logs[0].Flagged)
+}
+
+func TestChinaGatewayDouyinHitBlocksAndDoesNotCallClassifier(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "true")
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusOK, []byte(`{"data":{"tasks":[{"predicts":[{"hit":true}]}]}}`), &douyinRequests)
+	classifierServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		classifierRequests++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"action\":\"allow\",\"category\":\"other\",\"confidence\":1}"}}]}`))
+	}))
+	defer classifierServer.Close()
+
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	repo := &contentModerationTestRepo{}
+	hashCache := &contentModerationTestHashCache{}
+	svc := newChinaGatewayTestService(t, cfg, repo, hashCache, nil, nil)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		UserID:   1001,
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"风险请求"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionDouyinBlock, decision.Action)
+	require.Equal(t, 2, douyinRequests)
+	require.Zero(t, classifierRequests)
+	require.Len(t, hashCache.recorded, 1)
+	require.Len(t, repo.logs, 1)
+	require.Equal(t, ContentModerationActionDouyinBlock, repo.logs[0].Action)
+}
+
+func TestChinaGatewayDouyinFailureUsesClassifierAllow(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "true")
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusInternalServerError, []byte(`{"err_msg":"fail"}`), &douyinRequests)
+	classifierServer := newChinaGatewayClassifierServer(t, `{"action":"allow","category":"other","confidence":0.91,"reason":"普通编程请求"}`, &classifierRequests, http.StatusOK)
+
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	svc := newChinaGatewayTestService(t, cfg, &contentModerationTestRepo{}, &contentModerationTestHashCache{}, nil, nil)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		UserID:   1001,
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"解释这段代码"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, ContentModerationActionClassifierAllow, decision.Action)
+	require.Equal(t, 2, douyinRequests)
+	require.Equal(t, 1, classifierRequests)
+}
+
+func TestChinaGatewayClassifierBlockAndAutoBan(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "true")
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusInternalServerError, []byte(`{"err_msg":"fail"}`), &douyinRequests)
+	classifierServer := newChinaGatewayClassifierServer(t, `{"action":"block","category":"fraud","confidence":0.98,"reason":"诈骗"}`, &classifierRequests, http.StatusOK)
+
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	repo := &contentModerationTestRepo{flaggedCounts: []int{1}}
+	userRepo := &contentModerationTestUserRepo{user: &User{ID: 1001, Email: "user@example.com", Status: StatusActive}}
+	invalidator := &contentModerationTestAuthCacheInvalidator{}
+	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, userRepo, invalidator)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		UserID:    1001,
+		UserEmail: "user@example.com",
+		Protocol:  ContentModerationProtocolOpenAIChat,
+		Body:      []byte(`{"messages":[{"role":"user","content":"风险请求"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionClassifierBlock, decision.Action)
+	require.Equal(t, 2, repo.logs[0].ViolationCount)
+	require.True(t, repo.logs[0].AutoBanned)
+	require.Len(t, userRepo.updated, 1)
+	require.Equal(t, StatusDisabled, userRepo.updated[0].Status)
+	require.Equal(t, []int64{1001}, invalidator.userIDs)
+	require.Equal(t, 1, classifierRequests)
+}
+
+func TestChinaGatewayClassifierErrorBlocks(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "true")
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusInternalServerError, []byte(`{"err_msg":"fail"}`), &douyinRequests)
+	classifierServer := newChinaGatewayClassifierServer(t, `{"action":"allow"`, &classifierRequests, http.StatusOK)
+
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	repo := &contentModerationTestRepo{}
+	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, nil, nil)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		UserID:   1001,
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"灰区请求"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionClassifierErrorBlock, decision.Action)
+	require.Equal(t, 1, classifierRequests)
+	require.Len(t, repo.logs, 1)
+}
+
+func TestChinaGatewayHashHitSkipsDouyinAndClassifier(t *testing.T) {
+	t.Setenv(chinaGatewayEnabledEnv, "true")
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusOK, []byte(`{"data":{"tasks":[{"predicts":[{"hit":false}]}]}}`), &douyinRequests)
+	classifierServer := newChinaGatewayClassifierServer(t, `{"action":"allow","category":"other","confidence":1}`, &classifierRequests, http.StatusOK)
+
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	content := ContentModerationInput{Text: "历史风险输入"}
+	content.Normalize()
+	hashCache := &contentModerationTestHashCache{hashes: map[string]struct{}{
+		content.Hash(): {},
+	}}
+	svc := newChinaGatewayTestService(t, cfg, &contentModerationTestRepo{}, hashCache, nil, nil)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"历史风险输入"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionHashBlock, decision.Action)
+	require.Zero(t, douyinRequests)
+	require.Zero(t, classifierRequests)
 }
 
 func TestContentModerationDeleteFlaggedInputHash_NormalizesAndDeletes(t *testing.T) {
@@ -1003,4 +1240,88 @@ func TestContentModerationUnbanUser_ActiveUserOnlyInvalidatesAuthCache(t *testin
 
 func contentModerationIntPtr(v int) *int {
 	return &v
+}
+
+func disableChinaGatewayForLegacyModerationTest(t *testing.T) {
+	t.Helper()
+	t.Setenv(chinaGatewayEnabledEnv, "false")
+}
+
+func newChinaGatewayTestConfig(douyinBaseURL string, classifierBaseURL string) *ContentModerationConfig {
+	cfg := defaultContentModerationConfig()
+	cfg.DouyinBaseURL = douyinBaseURL
+	cfg.DouyinAppID = "douyin-app"
+	cfg.DouyinAppSecret = "douyin-secret"
+	cfg.DouyinTimeoutMS = 1000
+	cfg.ClassifierBaseURL = classifierBaseURL
+	cfg.ClassifierAPIKey = "classifier-key"
+	cfg.ClassifierModel = "classifier-model"
+	cfg.ClassifierTimeoutMS = 1000
+	return cfg
+}
+
+func newChinaGatewayTestService(t *testing.T, cfg *ContentModerationConfig, repo *contentModerationTestRepo, hashCache *contentModerationTestHashCache, userRepo *contentModerationTestUserRepo, invalidator *contentModerationTestAuthCacheInvalidator) *ContentModerationService {
+	t.Helper()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	return NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{SettingKeyContentModerationConfig: string(rawCfg)}},
+		repo,
+		hashCache,
+		nil,
+		userRepo,
+		invalidator,
+		nil,
+	)
+}
+
+func newChinaGatewayDouyinServer(t *testing.T, textStatus int, textBody []byte, requestCount *int) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requestCount != nil {
+			(*requestCount)++
+		}
+		switch r.URL.Path {
+		case chinaGatewayDouyinTokenPath:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"access_token": "douyin-token",
+					"expires_in":   7200,
+				},
+			})
+		case chinaGatewayDouyinTextPath:
+			require.Equal(t, "douyin-token", r.Header.Get("X-Token"))
+			w.WriteHeader(textStatus)
+			_, _ = w.Write(textBody)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func newChinaGatewayClassifierServer(t *testing.T, decisionContent string, requestCount *int, status int) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requestCount != nil {
+			(*requestCount)++
+		}
+		require.Equal(t, "/v1/chat/completions", r.URL.Path)
+		require.Equal(t, "Bearer classifier-key", r.Header.Get("Authorization"))
+		w.WriteHeader(status)
+		if status >= 200 && status < 300 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"choices": []map[string]any{{
+					"message": map[string]any{
+						"content": decisionContent,
+					},
+				}},
+			})
+		} else {
+			_, _ = w.Write([]byte(`{"error":"classifier failed"}`))
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
 }

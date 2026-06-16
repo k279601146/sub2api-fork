@@ -778,6 +778,8 @@ func (r *contentModerationHandlerTestRepo) CleanupExpiredLogs(ctx context.Contex
 }
 
 func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T) {
+	t.Setenv("CHINA_REGION_SAFETY_GATEWAY_ENABLED", "false")
+
 	gin.SetMode(gin.TestMode)
 
 	moderationServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
