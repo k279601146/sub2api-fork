@@ -778,8 +778,6 @@ func (r *contentModerationHandlerTestRepo) CleanupExpiredLogs(ctx context.Contex
 }
 
 func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T) {
-	t.Setenv("CHINA_REGION_SAFETY_GATEWAY_ENABLED", "false")
-
 	gin.SetMode(gin.TestMode)
 
 	moderationServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -789,14 +787,15 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 	defer moderationServer.Close()
 
 	cfg := &service.ContentModerationConfig{
-		Enabled:      true,
-		Mode:         service.ContentModerationModePreBlock,
-		BaseURL:      moderationServer.URL,
-		Model:        "omni-moderation-latest",
-		APIKeys:      []string{"sk-test"},
-		SampleRate:   100,
-		AllGroups:    true,
-		BlockMessage: "内容审计测试阻断",
+		Enabled:             true,
+		Mode:                service.ContentModerationModePreBlock,
+		BaseURL:             moderationServer.URL,
+		Model:               "omni-moderation-latest",
+		APIKeys:             []string{"sk-test"},
+		SampleRate:          100,
+		AllGroups:           true,
+		BlockMessage:        "内容审计测试阻断",
+		ChinaGatewayEnabled: false,
 	}
 	rawCfg, err := json.Marshal(cfg)
 	require.NoError(t, err)

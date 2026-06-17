@@ -22,6 +22,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -339,6 +340,7 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
+	contentModeration     *ContentModerationService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -416,6 +418,13 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+func (s *OpenAIGatewayService) SetContentModerationService(contentModeration *ContentModerationService) {
+	if s == nil {
+		return
+	}
+	s.contentModeration = contentModeration
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
@@ -2389,6 +2398,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, upstreamModel)
 				}
 				blocked := &OpenAIFastBlockedError{Message: msg}
+				s.recordOpenAIFastPolicyBlock(ctx, c, account, upstreamModel, body, blocked)
 				writeOpenAIFastPolicyBlockedResponse(c, blocked)
 				return nil, blocked
 			case BetaPolicyActionFilter:
@@ -2934,6 +2944,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
+			s.recordOpenAIFastPolicyBlock(ctx, c, account, policyModel, body, blocked)
 			writeOpenAIFastPolicyBlockedResponse(c, blocked)
 		}
 		return nil, policyErr
@@ -6079,6 +6090,54 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		}
 		return updated, nil
 	}
+}
+
+func (s *OpenAIGatewayService) recordOpenAIFastPolicyBlock(ctx context.Context, c *gin.Context, account *Account, model string, body []byte, blocked *OpenAIFastBlockedError) {
+	if s == nil || s.contentModeration == nil || blocked == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	input := ContentModerationPolicyBlockInput{
+		Model:        strings.TrimSpace(model),
+		Policy:       "openai_fast_policy",
+		Category:     "openai_fast_policy/service_tier",
+		Message:      blocked.Message,
+		InputExcerpt: ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body).ExcerptText(),
+	}
+	if c != nil {
+		if c.Request != nil {
+			if requestID, ok := c.Request.Context().Value(ctxkey.RequestID).(string); ok {
+				input.RequestID = strings.TrimSpace(requestID)
+			}
+			if c.Request.URL != nil {
+				input.Endpoint = c.Request.URL.Path
+			}
+		}
+		if apiKey, ok := c.Get("api_key"); ok {
+			if key, ok := apiKey.(*APIKey); ok && key != nil {
+				input.APIKeyID = key.ID
+				input.APIKeyName = key.Name
+				if key.User != nil {
+					input.UserID = key.User.ID
+					input.UserEmail = key.User.Email
+				}
+				if key.GroupID != nil {
+					groupID := *key.GroupID
+					input.GroupID = &groupID
+				}
+				if key.Group != nil {
+					input.GroupName = key.Group.Name
+					input.Provider = key.Group.Platform
+				}
+			}
+		}
+	}
+	if input.Provider == "" && account != nil {
+		input.Provider = account.Platform
+	}
+	s.contentModeration.RecordPolicyBlock(ctx, input)
 }
 
 // writeOpenAIFastPolicyBlockedResponse writes a 403 JSON response for a

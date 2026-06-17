@@ -66,6 +66,9 @@ func NewOpenAIGatewayHandler(
 			maxAccountSwitches = cfg.Gateway.MaxAccountSwitches
 		}
 	}
+	if gatewayService != nil {
+		gatewayService.SetContentModerationService(contentModerationService)
+	}
 	return &OpenAIGatewayHandler{
 		gatewayService:           gatewayService,
 		billingCacheService:      billingCacheService,

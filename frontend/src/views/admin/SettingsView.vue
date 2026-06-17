@@ -9,7 +9,7 @@
       </div>
 
       <!-- Settings Form -->
-      <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
+      <form v-else @submit.prevent="submitActiveTabSettings" class="space-y-6" novalidate>
         <!-- Tab Navigation -->
         <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
           <nav class="settings-tabs">
@@ -4642,6 +4642,165 @@
         </div>
         <!-- /Tab: Login Agreement -->
 
+        <!-- Tab: Content Safety -->
+        <div v-show="activeTab === 'contentSafety'" class="space-y-6">
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ localText("内容安全", "Content Safety") }}
+                  </h2>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ localText("中国地区 Safety Policy Gateway 仅对非中国国产模型请求转发前生效，不修改主模型提示词。", "China-region Safety Policy Gateway only runs before non-domestic model forwarding and does not modify the main model prompt.") }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  :disabled="contentSafetySaving || contentSafetyLoading"
+                  @click="saveContentSafetySettings"
+                >
+                  <span
+                    v-if="contentSafetySaving"
+                    class="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white"
+                  ></span>
+                  {{ t("common.save") }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="contentSafetyLoading" class="flex items-center gap-2 p-6 text-gray-500">
+              <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              {{ t("common.loading") }}
+            </div>
+
+            <div v-else class="space-y-6 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ localText("启用中国地区 Safety Gateway", "Enable China-region Safety Gateway") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ localText("关闭后不再调用抖音内容安全或独立分类器；传统内容审计设置和审核记录仍在风控中心管理。", "When disabled, Douyin content safety and the independent classifier are not called; legacy moderation settings and audit records remain managed in Risk Control.") }}
+                  </p>
+                </div>
+                <Toggle v-model="contentSafetyForm.china_gateway_enabled" />
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ localText("抖音 Base URL", "Douyin Base URL") }}</label>
+                  <input
+                    v-model.trim="contentSafetyForm.douyin_base_url"
+                    type="url"
+                    class="input"
+                    placeholder="https://developer.toutiao.com"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ localText("抖音超时毫秒", "Douyin timeout ms") }}</label>
+                  <input
+                    v-model.number="contentSafetyForm.douyin_timeout_ms"
+                    type="number"
+                    min="100"
+                    max="60000"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">Douyin AppID</label>
+                  <input
+                    v-model.trim="contentSafetyForm.douyin_app_id"
+                    type="text"
+                    class="input"
+                    :placeholder="contentSafetyForm.douyin_app_id_configured ? contentSafetyForm.douyin_app_id_masked : 'appid'"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">Douyin AppSecret</label>
+                  <input
+                    v-model.trim="contentSafetyForm.douyin_app_secret"
+                    type="password"
+                    class="input"
+                    autocomplete="new-password"
+                    :placeholder="contentSafetyForm.douyin_app_secret_configured ? localText('已配置，留空保留当前值', 'Configured. Leave empty to keep current value.') : 'secret'"
+                  />
+                </div>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ localText("Classifier Base URL", "Classifier Base URL") }}</label>
+                  <input
+                    v-model.trim="contentSafetyForm.classifier_base_url"
+                    type="url"
+                    class="input"
+                    placeholder="https://api.example.com"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ localText("Classifier 模型", "Classifier model") }}</label>
+                  <input
+                    v-model.trim="contentSafetyForm.classifier_model"
+                    type="text"
+                    class="input"
+                    placeholder="gpt-4.1-mini"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">Classifier API Key</label>
+                  <input
+                    v-model.trim="contentSafetyForm.classifier_api_key"
+                    type="password"
+                    class="input"
+                    autocomplete="new-password"
+                    :placeholder="contentSafetyForm.classifier_api_key_configured ? localText('已配置，留空保留当前值', 'Configured. Leave empty to keep current value.') : 'sk-...'"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ localText("Classifier 超时毫秒", "Classifier timeout ms") }}</label>
+                  <input
+                    v-model.number="contentSafetyForm.classifier_timeout_ms"
+                    type="number"
+                    min="100"
+                    max="60000"
+                    class="input"
+                  />
+                </div>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ localText("封禁阈值", "Ban threshold") }}</label>
+                  <input
+                    v-model.number="contentSafetyForm.ban_threshold"
+                    type="number"
+                    min="1"
+                    max="100"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ localText("违规统计窗口小时", "Violation window hours") }}</label>
+                  <input
+                    v-model.number="contentSafetyForm.violation_window_hours"
+                    type="number"
+                    min="1"
+                    max="720"
+                    class="input"
+                  />
+                </div>
+              </div>
+
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ localText("同一用户同一输入在统计窗口内重复触发时只计一次违规，重连请求仍会被拦截但不会重复推进封禁计数。", "Repeated hits from the same user and same input within the window count as one violation; reconnect requests are still blocked but do not advance the ban counter repeatedly.") }}
+              </p>
+            </div>
+          </div>
+        </div>
+        <!-- /Tab: Content Safety -->
+
 	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
 
@@ -6022,11 +6181,11 @@
         <div v-show="activeTab !== 'backup'" class="flex justify-end">
           <button
             type="submit"
-            :disabled="saving || loadFailed"
+            :disabled="activeTab === 'contentSafety' ? contentSafetySaving || contentSafetyLoading : saving || loadFailed"
             class="btn btn-primary"
           >
             <svg
-              v-if="saving"
+              v-if="activeTab === 'contentSafety' ? contentSafetySaving : saving"
               class="h-4 w-4 animate-spin"
               fill="none"
               viewBox="0 0 24 24"
@@ -6046,7 +6205,7 @@
               ></path>
             </svg>
             {{
-              saving
+              (activeTab === 'contentSafety' ? contentSafetySaving : saving)
                 ? t("admin.settings.saving")
                 : t("admin.settings.saveSettings")
             }}
@@ -6092,6 +6251,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
 import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
@@ -6146,6 +6306,7 @@ import {
 } from "@/utils/registrationEmailPolicy";
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
@@ -6170,17 +6331,18 @@ type SettingsTab =
   | "general"
   | "agreement"
   | "features"
+  | "contentSafety"
   | "security"
   | "users"
   | "gateway"
   | "payment"
   | "email"
   | "backup";
-const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
+  { key: "contentSafety" as SettingsTab, icon: "shield" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
   { key: "gateway" as SettingsTab, icon: "server" as const },
@@ -6188,7 +6350,24 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+const validSettingsTabs = new Set<SettingsTab>(settingsTabs.map((tab) => tab.key));
+const activeTab = ref<SettingsTab>(normalizeSettingsTab(route.query.tab));
 const { copyToClipboard } = useClipboard();
+
+function normalizeSettingsTab(value: unknown): SettingsTab {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw === "string" && validSettingsTabs.has(raw as SettingsTab)) {
+    return raw as SettingsTab;
+  }
+  return "general";
+}
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    activeTab.value = normalizeSettingsTab(tab);
+  },
+);
 
 const loading = ref(true);
 const loadFailed = ref(false);
@@ -6260,6 +6439,29 @@ const betaPolicyForm = reactive({
     fallback_action?: "pass" | "filter" | "block";
     fallback_error_message?: string;
   }>,
+});
+
+// 内容安全网关状态
+const contentSafetyLoading = ref(true);
+const contentSafetySaving = ref(false);
+const contentSafetyForm = reactive({
+  china_gateway_enabled: true,
+  douyin_base_url: "https://developer.toutiao.com",
+  douyin_app_id: "",
+  douyin_app_id_configured: false,
+  douyin_app_id_masked: "",
+  douyin_app_secret: "",
+  douyin_app_secret_configured: false,
+  douyin_app_secret_masked: "",
+  douyin_timeout_ms: 800,
+  classifier_base_url: "",
+  classifier_api_key: "",
+  classifier_api_key_configured: false,
+  classifier_api_key_masked: "",
+  classifier_model: "",
+  classifier_timeout_ms: 1200,
+  ban_threshold: 2,
+  violation_window_hours: 1,
 });
 
 // OpenAI Fast/Flex Policy 状态
@@ -8203,6 +8405,104 @@ async function saveBetaPolicySettings() {
   }
 }
 
+async function loadContentSafetySettings() {
+  contentSafetyLoading.value = true;
+  try {
+    const config = await adminAPI.riskControl.getConfig();
+    Object.assign(contentSafetyForm, {
+      china_gateway_enabled: config.china_gateway_enabled,
+      douyin_base_url: config.douyin_base_url || "https://developer.toutiao.com",
+      douyin_app_id: "",
+      douyin_app_id_configured: config.douyin_app_id_configured,
+      douyin_app_id_masked: config.douyin_app_id_masked,
+      douyin_app_secret: "",
+      douyin_app_secret_configured: config.douyin_app_secret_configured,
+      douyin_app_secret_masked: config.douyin_app_secret_masked,
+      douyin_timeout_ms: config.douyin_timeout_ms,
+      classifier_base_url: config.classifier_base_url || "",
+      classifier_api_key: "",
+      classifier_api_key_configured: config.classifier_api_key_configured,
+      classifier_api_key_masked: config.classifier_api_key_masked,
+      classifier_model: config.classifier_model || "",
+      classifier_timeout_ms: config.classifier_timeout_ms,
+      ban_threshold: config.ban_threshold,
+      violation_window_hours: config.violation_window_hours,
+    });
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        localText("内容安全配置加载失败", "Failed to load content safety settings"),
+      ),
+    );
+  } finally {
+    contentSafetyLoading.value = false;
+  }
+}
+
+async function saveContentSafetySettings() {
+  contentSafetySaving.value = true;
+  try {
+    const payload: Parameters<typeof adminAPI.riskControl.updateConfig>[0] = {
+      china_gateway_enabled: contentSafetyForm.china_gateway_enabled,
+      douyin_base_url: contentSafetyForm.douyin_base_url,
+      douyin_timeout_ms: Number(contentSafetyForm.douyin_timeout_ms) || 800,
+      classifier_base_url: contentSafetyForm.classifier_base_url,
+      classifier_model: contentSafetyForm.classifier_model,
+      classifier_timeout_ms: Number(contentSafetyForm.classifier_timeout_ms) || 1200,
+      ban_threshold: Number(contentSafetyForm.ban_threshold) || 2,
+      violation_window_hours: Number(contentSafetyForm.violation_window_hours) || 1,
+    };
+    if (contentSafetyForm.douyin_app_id.trim()) {
+      payload.douyin_app_id = contentSafetyForm.douyin_app_id.trim();
+    }
+    if (contentSafetyForm.douyin_app_secret.trim()) {
+      payload.douyin_app_secret = contentSafetyForm.douyin_app_secret.trim();
+    }
+    if (contentSafetyForm.classifier_api_key.trim()) {
+      payload.classifier_api_key = contentSafetyForm.classifier_api_key.trim();
+    }
+    const updated = await adminAPI.riskControl.updateConfig(payload);
+    Object.assign(contentSafetyForm, {
+      china_gateway_enabled: updated.china_gateway_enabled,
+      douyin_base_url: updated.douyin_base_url || "https://developer.toutiao.com",
+      douyin_app_id: "",
+      douyin_app_id_configured: updated.douyin_app_id_configured,
+      douyin_app_id_masked: updated.douyin_app_id_masked,
+      douyin_app_secret: "",
+      douyin_app_secret_configured: updated.douyin_app_secret_configured,
+      douyin_app_secret_masked: updated.douyin_app_secret_masked,
+      douyin_timeout_ms: updated.douyin_timeout_ms,
+      classifier_base_url: updated.classifier_base_url || "",
+      classifier_api_key: "",
+      classifier_api_key_configured: updated.classifier_api_key_configured,
+      classifier_api_key_masked: updated.classifier_api_key_masked,
+      classifier_model: updated.classifier_model || "",
+      classifier_timeout_ms: updated.classifier_timeout_ms,
+      ban_threshold: updated.ban_threshold,
+      violation_window_hours: updated.violation_window_hours,
+    });
+    appStore.showSuccess(t("common.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        localText("内容安全配置保存失败", "Failed to save content safety settings"),
+      ),
+    );
+  } finally {
+    contentSafetySaving.value = false;
+  }
+}
+
+async function submitActiveTabSettings() {
+  if (activeTab.value === "contentSafety") {
+    await saveContentSafetySettings();
+    return;
+  }
+  await saveSettings();
+}
+
 // ==================== Provider Management ====================
 
 const allPaymentTypes = computed(() => [
@@ -8559,6 +8859,7 @@ onMounted(() => {
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();
+  loadContentSafetySettings();
   loadProviders();
 });
 

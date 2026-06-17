@@ -16,6 +16,8 @@ const {
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
+  getRiskControlConfig,
+  updateRiskControlConfig,
   getGroups,
   listProxies,
   getProviders,
@@ -38,6 +40,8 @@ const {
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
+  getRiskControlConfig: vi.fn(),
+  updateRiskControlConfig: vi.fn(),
   getGroups: vi.fn(),
   listProxies: vi.fn(),
   getProviders: vi.fn(),
@@ -51,6 +55,31 @@ const {
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
+const routeQueryRef = vi.hoisted(() => ({ tab: undefined as unknown }));
+
+vi.mock("vue-router", async () => {
+  const vue = await vi.importActual<typeof import("vue")>("vue");
+  return {
+    useRoute: () => ({
+      query: routeQueryRef,
+    }),
+    useRouter: () => ({
+      push: vi.fn(),
+      replace: vi.fn(),
+    }),
+    RouterLink: vue.defineComponent({
+      props: {
+        to: {
+          type: [String, Object],
+          default: "",
+        },
+      },
+      setup(props, { slots }) {
+        return () => vue.h("a", { href: typeof props.to === "string" ? props.to : "#" }, slots.default?.());
+      },
+    }),
+  };
+});
 
 vi.mock("@/api", () => ({
   adminAPI: {
@@ -66,6 +95,10 @@ vi.mock("@/api", () => ({
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
+    },
+    riskControl: {
+      getConfig: getRiskControlConfig,
+      updateConfig: updateRiskControlConfig,
     },
     groups: {
       getAll: getGroups,
@@ -452,6 +485,57 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openContentSafetyTab(wrapper: ReturnType<typeof mountView>) {
+  const contentSafetyTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.contentSafety"));
+
+  expect(contentSafetyTabButton).toBeDefined();
+  await contentSafetyTabButton?.trigger("click");
+  await flushPromises();
+}
+
+const baseRiskControlConfig = {
+  enabled: false,
+  mode: "pre_block",
+  base_url: "https://api.openai.com",
+  model: "omni-moderation-latest",
+  api_key_configured: false,
+  api_key_masked: "",
+  api_key_count: 0,
+  api_key_masks: [],
+  api_key_statuses: [],
+  timeout_ms: 3000,
+  sample_rate: 100,
+  all_groups: true,
+  group_ids: [],
+  record_non_hits: false,
+  worker_count: 4,
+  queue_size: 32768,
+  block_status: 403,
+  block_message: "blocked",
+  email_on_hit: true,
+  auto_ban_enabled: true,
+  ban_threshold: 2,
+  violation_window_hours: 1,
+  retry_count: 2,
+  hit_retention_days: 180,
+  non_hit_retention_days: 3,
+  pre_hash_check_enabled: false,
+  china_gateway_enabled: true,
+  douyin_base_url: "https://developer.toutiao.com",
+  douyin_app_id_configured: false,
+  douyin_app_id_masked: "",
+  douyin_app_secret_configured: false,
+  douyin_app_secret_masked: "",
+  douyin_timeout_ms: 800,
+  classifier_base_url: "",
+  classifier_api_key_configured: false,
+  classifier_api_key_masked: "",
+  classifier_model: "",
+  classifier_timeout_ms: 1200,
+};
+
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
@@ -465,6 +549,8 @@ describe("admin SettingsView payment visible method controls", () => {
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
+    getRiskControlConfig.mockReset();
+    updateRiskControlConfig.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
@@ -476,6 +562,7 @@ describe("admin SettingsView payment visible method controls", () => {
     showError.mockReset();
     showSuccess.mockReset();
     localeRef.value = "zh-CN";
+    routeQueryRef.tab = undefined;
 
     getSettings.mockResolvedValue({ ...baseSettingsResponse });
     updateSettings.mockImplementation(async (payload) => ({
@@ -520,6 +607,14 @@ describe("admin SettingsView payment visible method controls", () => {
     getBetaPolicySettings.mockResolvedValue({
       rules: [],
     });
+    getRiskControlConfig.mockResolvedValue({ ...baseRiskControlConfig });
+    updateRiskControlConfig.mockImplementation(async (payload: Record<string, unknown>) => ({
+      ...baseRiskControlConfig,
+      ...payload,
+      douyin_app_id_configured: Boolean(payload.douyin_app_id),
+      douyin_app_secret_configured: Boolean(payload.douyin_app_secret),
+      classifier_api_key_configured: Boolean(payload.classifier_api_key),
+    }));
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({
       items: [],
@@ -693,6 +788,28 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(paymentHelpImageUpload?.attributes("data-upload-label")).toBe("上传图片");
     expect(paymentHelpImageUpload?.attributes("data-remove-label")).toBe("移除");
   });
+
+  it("submits content safety settings from the bottom save button", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openContentSafetyTab(wrapper);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(updateRiskControlConfig).toHaveBeenCalledTimes(1);
+    expect(updateRiskControlConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        china_gateway_enabled: true,
+        douyin_base_url: "https://developer.toutiao.com",
+        douyin_timeout_ms: 800,
+        classifier_timeout_ms: 1200,
+        ban_threshold: 2,
+        violation_window_hours: 1,
+      }),
+    );
+  });
 });
 
 describe("admin SettingsView wechat connect controls", () => {
@@ -708,6 +825,8 @@ describe("admin SettingsView wechat connect controls", () => {
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
+    getRiskControlConfig.mockReset();
+    updateRiskControlConfig.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
@@ -718,6 +837,7 @@ describe("admin SettingsView wechat connect controls", () => {
     adminSettingsFetch.mockReset();
     showError.mockReset();
     showSuccess.mockReset();
+    routeQueryRef.tab = undefined;
 
     getSettings.mockResolvedValue({
       ...baseSettingsResponse,
@@ -766,6 +886,14 @@ describe("admin SettingsView wechat connect controls", () => {
     getBetaPolicySettings.mockResolvedValue({
       rules: [],
     });
+    getRiskControlConfig.mockResolvedValue({ ...baseRiskControlConfig });
+    updateRiskControlConfig.mockImplementation(async (payload: Record<string, unknown>) => ({
+      ...baseRiskControlConfig,
+      ...payload,
+      douyin_app_id_configured: Boolean(payload.douyin_app_id),
+      douyin_app_secret_configured: Boolean(payload.douyin_app_secret),
+      classifier_api_key_configured: Boolean(payload.classifier_api_key),
+    }));
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({
       items: [],

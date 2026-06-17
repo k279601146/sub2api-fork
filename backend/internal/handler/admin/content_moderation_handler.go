@@ -46,6 +46,7 @@ type contentModerationConfigRequest struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	ChinaGatewayEnabled  *bool     `json:"china_gateway_enabled"`
 	DouyinBaseURL        *string   `json:"douyin_base_url"`
 	DouyinAppID          *string   `json:"douyin_app_id"`
 	DouyinAppSecret      *string   `json:"douyin_app_secret"`
@@ -111,6 +112,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		HitRetentionDays:     req.HitRetentionDays,
 		NonHitRetentionDays:  req.NonHitRetentionDays,
 		PreHashCheckEnabled:  req.PreHashCheckEnabled,
+		ChinaGatewayEnabled:  req.ChinaGatewayEnabled,
 		DouyinBaseURL:        req.DouyinBaseURL,
 		DouyinAppID:          req.DouyinAppID,
 		DouyinAppSecret:      req.DouyinAppSecret,

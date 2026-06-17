@@ -42,6 +42,7 @@ const (
 	ContentModerationActionClassifierAllow       = "classifier_allow"
 	ContentModerationActionClassifierErrorBlock  = "classifier_error_block"
 	ContentModerationActionChinaConfigErrorBlock = "china_gateway_config_error_block"
+	ContentModerationActionPolicyBlock           = "policy_block"
 
 	ContentModerationProtocolAnthropicMessages = "anthropic_messages"
 	ContentModerationProtocolOpenAIResponses   = "openai_responses"
@@ -152,6 +153,7 @@ type ContentModerationConfig struct {
 	HitRetentionDays     int                `json:"hit_retention_days"`
 	NonHitRetentionDays  int                `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  bool               `json:"pre_hash_check_enabled"`
+	ChinaGatewayEnabled  bool               `json:"china_gateway_enabled"`
 	DouyinBaseURL        string             `json:"douyin_base_url,omitempty"`
 	DouyinAppID          string             `json:"douyin_app_id,omitempty"`
 	DouyinAppSecret      string             `json:"douyin_app_secret,omitempty"`
@@ -270,6 +272,7 @@ type UpdateContentModerationConfigInput struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	ChinaGatewayEnabled  *bool     `json:"china_gateway_enabled"`
 	DouyinBaseURL        *string   `json:"douyin_base_url"`
 	DouyinAppID          *string   `json:"douyin_app_id"`
 	DouyinAppSecret      *string   `json:"douyin_app_secret"`
@@ -293,6 +296,23 @@ type ContentModerationCheckInput struct {
 	Model      string
 	Protocol   string
 	Body       []byte
+}
+
+type ContentModerationPolicyBlockInput struct {
+	RequestID    string
+	UserID       int64
+	UserEmail    string
+	APIKeyID     int64
+	APIKeyName   string
+	GroupID      *int64
+	GroupName    string
+	Endpoint     string
+	Provider     string
+	Model        string
+	Policy       string
+	Category     string
+	Message      string
+	InputExcerpt string
 }
 
 type ContentModerationInput struct {
@@ -478,11 +498,11 @@ type ContentModerationService struct {
 	lastCleanupDeletedNonHit atomic.Int64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
-	chinaGatewayEnabled      bool
 	chinaGatewayMu           sync.Mutex
 	chinaGatewayToken        string
 	chinaGatewayTokenExpiry  time.Time
 	chinaGatewayCache        map[string]chinaGatewayCachedDecision
+	chinaGatewayViolationTTL map[string]time.Time
 }
 
 type contentModerationTask struct {
@@ -515,19 +535,19 @@ func NewContentModerationService(
 	emailService *EmailService,
 ) *ContentModerationService {
 	svc := &ContentModerationService{
-		settingRepo:          settingRepo,
-		repo:                 repo,
-		hashCache:            hashCache,
-		groupRepo:            groupRepo,
-		userRepo:             userRepo,
-		authCacheInvalidator: authCacheInvalidator,
-		emailService:         emailService,
-		httpClient:           &http.Client{},
-		workerCount:          maxContentModerationWorkerCount,
-		asyncQueue:           make(chan contentModerationTask, maxContentModerationQueueSize),
-		keyHealth:            make(map[string]*contentModerationKeyHealth),
-		chinaGatewayEnabled:  parseChinaGatewayEnabledEnv(),
-		chinaGatewayCache:    make(map[string]chinaGatewayCachedDecision),
+		settingRepo:              settingRepo,
+		repo:                     repo,
+		hashCache:                hashCache,
+		groupRepo:                groupRepo,
+		userRepo:                 userRepo,
+		authCacheInvalidator:     authCacheInvalidator,
+		emailService:             emailService,
+		httpClient:               &http.Client{},
+		workerCount:              maxContentModerationWorkerCount,
+		asyncQueue:               make(chan contentModerationTask, maxContentModerationQueueSize),
+		keyHealth:                make(map[string]*contentModerationKeyHealth),
+		chinaGatewayCache:        make(map[string]chinaGatewayCachedDecision),
+		chinaGatewayViolationTTL: make(map[string]time.Time),
 	}
 	if settingRepo != nil && repo != nil {
 		for i := 0; i < svc.workerCount; i++ {
@@ -604,6 +624,9 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.PreHashCheckEnabled != nil {
 		cfg.PreHashCheckEnabled = *input.PreHashCheckEnabled
+	}
+	if input.ChinaGatewayEnabled != nil {
+		cfg.ChinaGatewayEnabled = *input.ChinaGatewayEnabled
 	}
 	if input.DouyinBaseURL != nil {
 		cfg.DouyinBaseURL = strings.TrimSpace(*input.DouyinBaseURL)
@@ -757,7 +780,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"endpoint", input.Endpoint,
 			"protocol", input.Protocol,
 			"error", err)
-		if s.chinaGatewayEnabled {
+		if shouldApplyChinaGateway(input.Provider, input.Model) {
 			return s.chinaGatewayConfigErrorDecision(ctx, input, nil, "中国地区内容安全网关配置加载失败"), nil
 		}
 		return allow, nil
@@ -784,7 +807,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 		"text_runes", len([]rune(content.Text)),
 		"image_count", len(content.Images))
 	hashText := content.Hash()
-	if s.chinaGatewayEnabled {
+	if cfg.ChinaGatewayEnabled && shouldApplyChinaGateway(input.Provider, input.Model) {
 		if decision := s.checkChinaRegionSafetyGateway(ctx, input, cfg, content, hashText); decision != nil {
 			return decision, nil
 		}
@@ -874,6 +897,14 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			if message != "" {
 				message = fmt.Sprintf("%s（hash: %s）", message, hashText)
 			}
+			if s.repo != nil {
+				scores := map[string]float64{"content_moderation/hash_hit": 1}
+				log := s.buildLog(input, cfg, ContentModerationActionHashBlock, true, "content_moderation/hash_hit", 1, scores, content.ExcerptText(), nil, nil, "")
+				log.ViolationCount = 0
+				if err := s.repo.CreateLog(ctx, log); err != nil {
+					slog.Warn("content_moderation.hash_block_log_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "error", err)
+				}
+			}
 			return &ContentModerationDecision{
 				Allowed:    false,
 				Blocked:    true,
@@ -941,7 +972,9 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		}
 		if cfg.RecordNonHits {
 			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
-			_ = s.repo.CreateLog(ctx, log)
+			if logErr := s.repo.CreateLog(ctx, log); logErr != nil {
+				slog.Warn("content_moderation.error_log_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "error", logErr)
+			}
 		}
 		return allow
 	}
@@ -977,7 +1010,9 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 			}
 		}
 		s.applyFlaggedSideEffects(ctx, cfg, log)
-		_ = s.repo.CreateLog(ctx, log)
+		if logErr := s.repo.CreateLog(ctx, log); logErr != nil {
+			slog.Warn("content_moderation.audit_log_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "action", action, "error", logErr)
+		}
 	}
 	if blocked {
 		return &ContentModerationDecision{
@@ -1098,6 +1133,52 @@ func (s *ContentModerationService) ListLogs(ctx context.Context, filter ContentM
 		filter.Pagination.SortOrder = pagination.SortOrderDesc
 	}
 	return s.repo.ListLogs(ctx, filter)
+}
+
+func (s *ContentModerationService) RecordPolicyBlock(ctx context.Context, input ContentModerationPolicyBlockInput) {
+	if s == nil || s.repo == nil {
+		return
+	}
+	cfg := defaultContentModerationConfig()
+	category := strings.TrimSpace(input.Category)
+	if category == "" {
+		category = "policy/block"
+	}
+	provider := strings.TrimSpace(input.Provider)
+	if provider == "" {
+		provider = "system"
+	}
+	cmInput := ContentModerationCheckInput{
+		RequestID:  strings.TrimSpace(input.RequestID),
+		UserID:     input.UserID,
+		UserEmail:  strings.TrimSpace(input.UserEmail),
+		APIKeyID:   input.APIKeyID,
+		APIKeyName: strings.TrimSpace(input.APIKeyName),
+		GroupID:    cloneInt64Ptr(input.GroupID),
+		GroupName:  strings.TrimSpace(input.GroupName),
+		Endpoint:   strings.TrimSpace(input.Endpoint),
+		Provider:   provider,
+		Model:      strings.TrimSpace(input.Model),
+	}
+	errText := strings.TrimSpace(input.Message)
+	if policy := strings.TrimSpace(input.Policy); policy != "" {
+		if errText == "" {
+			errText = policy
+		} else {
+			errText = policy + ": " + errText
+		}
+	}
+	scores := map[string]float64{category: 1}
+	log := s.buildLog(cmInput, cfg, ContentModerationActionPolicyBlock, true, category, 1, scores, input.InputExcerpt, nil, nil, errText)
+	log.ViolationCount = 0
+	if err := s.repo.CreateLog(ctx, log); err != nil {
+		slog.Warn("content_moderation.policy_block_log_failed",
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"endpoint", input.Endpoint,
+			"policy", input.Policy,
+			"error", err)
+	}
 }
 
 func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) (*ContentModerationUnbanUserResult, error) {
@@ -1269,8 +1350,16 @@ func (s *ContentModerationService) loadConfig(ctx context.Context) (*ContentMode
 		cfg.normalize()
 		return cfg, nil
 	}
+	var rawMap map[string]json.RawMessage
+	hasChinaGatewayEnabled := false
+	if err := json.Unmarshal([]byte(raw), &rawMap); err == nil {
+		_, hasChinaGatewayEnabled = rawMap["china_gateway_enabled"]
+	}
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CONTENT_MODERATION_CONFIG", "内容审计配置不是有效 JSON")
+	}
+	if !hasChinaGatewayEnabled {
+		cfg.ChinaGatewayEnabled = true
 	}
 	cfg.normalize()
 	return cfg, nil
@@ -1548,6 +1637,7 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 		HitRetentionDays:     defaultContentModerationHitRetentionDays,
 		NonHitRetentionDays:  defaultContentModerationNonHitRetentionDays,
 		PreHashCheckEnabled:  false,
+		ChinaGatewayEnabled:  true,
 		DouyinBaseURL:        defaultChinaGatewayDouyinBaseURL,
 		DouyinTimeoutMS:      defaultChinaGatewayDouyinTimeoutMS,
 		ClassifierTimeoutMS:  defaultChinaGatewayClassifierTimeoutMS,
@@ -1826,7 +1916,7 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		HitRetentionDays:           cfg.HitRetentionDays,
 		NonHitRetentionDays:        cfg.NonHitRetentionDays,
 		PreHashCheckEnabled:        cfg.PreHashCheckEnabled,
-		ChinaGatewayEnabled:        s != nil && s.chinaGatewayEnabled,
+		ChinaGatewayEnabled:        cfg.ChinaGatewayEnabled,
 		DouyinBaseURL:              cfg.DouyinBaseURL,
 		DouyinAppIDConfigured:      strings.TrimSpace(cfg.DouyinAppID) != "",
 		DouyinAppIDMasked:          maskSecretTail(cfg.DouyinAppID),

@@ -29,6 +29,18 @@ export interface ContentModerationConfig {
   hit_retention_days: number
   non_hit_retention_days: number
   pre_hash_check_enabled: boolean
+  china_gateway_enabled: boolean
+  douyin_base_url: string
+  douyin_app_id_configured: boolean
+  douyin_app_id_masked: string
+  douyin_app_secret_configured: boolean
+  douyin_app_secret_masked: string
+  douyin_timeout_ms: number
+  classifier_base_url: string
+  classifier_api_key_configured: boolean
+  classifier_api_key_masked: string
+  classifier_model: string
+  classifier_timeout_ms: number
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -100,6 +112,15 @@ export interface UpdateContentModerationConfig {
   hit_retention_days?: number
   non_hit_retention_days?: number
   pre_hash_check_enabled?: boolean
+  china_gateway_enabled?: boolean
+  douyin_base_url?: string
+  douyin_app_id?: string
+  douyin_app_secret?: string
+  douyin_timeout_ms?: number
+  classifier_base_url?: string
+  classifier_api_key?: string
+  classifier_model?: string
+  classifier_timeout_ms?: number
 }
 
 export interface ContentModerationRuntimeStatus {

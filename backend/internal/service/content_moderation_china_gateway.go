@@ -10,16 +10,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
 
 const (
-	chinaGatewayEnabledEnv = "CHINA_REGION_SAFETY_GATEWAY_ENABLED"
-
 	defaultChinaGatewayDouyinBaseURL = "https://developer.toutiao.com"
 	chinaGatewayDouyinTokenPath      = "/api/apps/v2/token"
 	chinaGatewayDouyinTextPath       = "/api/v2/tags/text/antidirt"
@@ -81,22 +79,6 @@ type chinaClassifierDecision struct {
 	Reason     string  `json:"reason"`
 }
 
-func parseChinaGatewayEnabledEnv() bool {
-	raw, ok := os.LookupEnv(chinaGatewayEnabledEnv)
-	if !ok {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "1", "true", "yes", "on", "enabled":
-		return true
-	case "0", "false", "no", "off", "disabled":
-		return false
-	default:
-		slog.Warn("content_moderation.china_gateway.invalid_env", "env", chinaGatewayEnabledEnv, "value", raw)
-		return true
-	}
-}
-
 func (s *ContentModerationService) checkChinaRegionSafetyGateway(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string) *ContentModerationDecision {
 	if s == nil || cfg == nil {
 		return nil
@@ -111,15 +93,7 @@ func (s *ContentModerationService) checkChinaRegionSafetyGateway(ctx context.Con
 			slog.Warn("content_moderation.china_gateway.hash_check_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "error", err)
 		}
 		if matched {
-			return &ContentModerationDecision{
-				Allowed:    false,
-				Blocked:    true,
-				Flagged:    true,
-				Message:    chinaGatewayBlockMessage(cfg),
-				StatusCode: cfg.BlockStatus,
-				InputHash:  hashText,
-				Action:     ContentModerationActionHashBlock,
-			}
+			return s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionHashBlock, "china_region/hash_hit", 1, nil, "", "")
 		}
 	}
 	if cached, ok := s.getChinaGatewayCachedDecision(hashText); ok {
@@ -508,9 +482,17 @@ func (s *ContentModerationService) chinaGatewayBlockDecision(ctx context.Context
 			slog.Warn("content_moderation.china_gateway.record_hash_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "error", err)
 		}
 	}
-	s.applyFlaggedSideEffects(ctx, cfg, log)
+	countViolation := s.shouldCountChinaGatewayViolation(input.UserID, hashText, cfg.ViolationWindowHours)
+	if countViolation {
+		s.applyFlaggedSideEffects(ctx, cfg, log)
+	}
+	if !countViolation {
+		log.ViolationCount = 0
+	}
 	if s.repo != nil {
-		_ = s.repo.CreateLog(ctx, log)
+		if err := s.repo.CreateLog(ctx, log); err != nil {
+			slog.Warn("content_moderation.china_gateway.block_log_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "action", action, "error", err)
+		}
 	}
 	return &ContentModerationDecision{
 		Allowed:         false,
@@ -532,7 +514,9 @@ func (s *ContentModerationService) chinaGatewayAllowDecision(ctx context.Context
 	}
 	scores := map[string]float64{category: score}
 	log := s.buildLog(input, cfg, action, false, category, score, scores, content.ExcerptText(), latency, nil, "")
-	_ = s.repo.CreateLog(ctx, log)
+	if err := s.repo.CreateLog(ctx, log); err != nil {
+		slog.Warn("content_moderation.china_gateway.allow_log_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "action", action, "error", err)
+	}
 }
 
 func chinaGatewayBlockMessage(cfg *ContentModerationConfig) string {
@@ -587,11 +571,90 @@ func chinaGatewayCacheKey(inputHash string) string {
 	return hex.EncodeToString(h[:])
 }
 
+func shouldApplyChinaGateway(provider string, model string) bool {
+	return !isChinaDomesticAIModel(provider, model)
+}
+
+func isChinaDomesticAIModel(provider string, model string) bool {
+	text := strings.ToLower(strings.TrimSpace(provider + " " + model))
+	if text == "" {
+		return false
+	}
+	domesticMarkers := []string{
+		"qwen", "tongyi", "aliyun", "dashscope", "baichuan", "ernie", "wenxin", "baidu",
+		"hunyuan", "tencent", "yuanbao", "doubao", "volcengine", "bytedance", "ark",
+		"moonshot", "kimi", "minimax", "abab", "glm", "chatglm", "zhipu", "bigmodel",
+		"spark", "xinghuo", "iflytek", "deepseek", "yi-", "01-ai", "stepfun", "step-",
+		"sensenova", "sensechat", "siliconflow", "baai", "aquila",
+	}
+	for _, marker := range domesticMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *ContentModerationService) shouldCountChinaGatewayViolation(userID int64, inputHash string, windowHours int) bool {
+	if s == nil || userID <= 0 || strings.TrimSpace(inputHash) == "" {
+		return true
+	}
+	if windowHours <= 0 {
+		windowHours = defaultChinaGatewayViolationWindowHours
+	}
+	key := fmt.Sprintf("%d:%s", userID, chinaGatewayCacheKey(inputHash))
+	if strings.TrimSpace(key) == "" {
+		return true
+	}
+	now := time.Now()
+	expiresAt := now.Add(time.Duration(windowHours) * time.Hour)
+	s.chinaGatewayMu.Lock()
+	defer s.chinaGatewayMu.Unlock()
+	if s.chinaGatewayViolationTTL == nil {
+		s.chinaGatewayViolationTTL = make(map[string]time.Time)
+	}
+	if existing, ok := s.chinaGatewayViolationTTL[key]; ok && existing.After(now) {
+		return false
+	}
+	s.chinaGatewayViolationTTL[key] = expiresAt
+	return true
+}
+
 func (s *ContentModerationService) httpClientOrDefault() *http.Client {
 	if s != nil && s.httpClient != nil {
 		return s.httpClient
 	}
 	return http.DefaultClient
+}
+
+func newContentModerationHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxyFromEnvironmentSkippingLoopback(http.ProxyFromEnvironment)
+	return &http.Client{Transport: transport}
+}
+
+func proxyFromEnvironmentSkippingLoopback(base func(*http.Request) (*url.URL, error)) func(*http.Request) (*url.URL, error) {
+	return func(req *http.Request) (*url.URL, error) {
+		if req != nil && req.URL != nil && shouldBypassProxyForHost(req.URL.Hostname()) {
+			return nil, nil
+		}
+		return base(req)
+	}
+}
+
+func shouldBypassProxyForHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return false
+	}
+	if host == "localhost" || host == "localhost." || host == "::1" {
+		return true
+	}
+	if strings.HasPrefix(host, "127.") {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 func findStringValue(value any, key string) (string, bool) {

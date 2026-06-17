@@ -53,6 +53,19 @@
           </div>
         </div>
 
+        <div class="rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-200">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p class="font-medium">{{ t('admin.riskControl.gatewaySettingsNoticeTitle') }}</p>
+              <p class="mt-1 text-xs leading-5 text-sky-700 dark:text-sky-300">{{ t('admin.riskControl.gatewaySettingsNoticeDesc') }}</p>
+            </div>
+            <router-link :to="{ path: '/admin/settings', query: { tab: 'contentSafety' } }" class="btn btn-secondary btn-sm inline-flex items-center justify-center gap-2">
+              <Icon name="cog" size="sm" />
+              {{ t('admin.riskControl.openContentSafetySettings') }}
+            </router-link>
+          </div>
+        </div>
+
         <div class="card">
           <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -717,14 +730,6 @@
                 </div>
                 <Toggle v-model="configForm.auto_ban_enabled" />
               </div>
-              <div>
-                <label class="input-label">{{ t('admin.riskControl.banThreshold') }}</label>
-                <input v-model.number="configForm.ban_threshold" type="number" min="1" max="1000" class="input" />
-              </div>
-              <div>
-                <label class="input-label">{{ t('admin.riskControl.violationWindowHours') }}</label>
-                <input v-model.number="configForm.violation_window_hours" type="number" min="1" max="8760" class="input" />
-              </div>
             </div>
           </div>
 
@@ -888,6 +893,7 @@ const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
 let statusTimer: number | null = null
+let logsTimer: number | null = null
 
 const configForm = reactive({
   enabled: false,
@@ -1259,8 +1265,6 @@ async function saveConfig() {
       block_message: configForm.block_message || '内容审计命中风险规则，请调整输入后重试',
       email_on_hit: configForm.email_on_hit,
       auto_ban_enabled: configForm.auto_ban_enabled,
-      ban_threshold: Number(configForm.ban_threshold) || 10,
-      violation_window_hours: Number(configForm.violation_window_hours) || 720,
       hit_retention_days: Number(configForm.hit_retention_days) || 180,
       non_hit_retention_days: Math.min(Math.max(Number(configForm.non_hit_retention_days) || 3, 1), 3),
       pre_hash_check_enabled: configForm.pre_hash_check_enabled,
@@ -1563,17 +1567,21 @@ function modeDescription(mode: ModerationMode): string {
 }
 
 function resultLabel(row: ContentModerationLog): string {
-  if (row.action === 'block') return t('admin.riskControl.action.block')
+  if (isBlockAction(row.action)) return t('admin.riskControl.action.block')
   if (row.action === 'error' || row.error) return t('admin.riskControl.action.error')
   if (row.flagged) return t('admin.riskControl.result.hit')
   return t('admin.riskControl.result.pass')
 }
 
 function resultBadgeClass(row: ContentModerationLog): string {
-  if (row.action === 'block') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  if (isBlockAction(row.action)) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   if (row.action === 'error' || row.error) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
   if (row.flagged) return 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'
   return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+}
+
+function isBlockAction(action: string): boolean {
+  return action === 'block' || action.endsWith('_block')
 }
 
 function workerSlotClass(state: WorkerSlotState): string {
@@ -1669,6 +1677,7 @@ function parseApiKeys(value: string): string[] {
 
 function violationCountText(row: ContentModerationLog): string {
   if (!row.flagged) return '-'
+  if ((row.violation_count || 0) <= 0) return t('admin.riskControl.duplicateViolation')
   return t('admin.riskControl.violationCount', { count: row.violation_count || 1 })
 }
 
@@ -1692,12 +1701,19 @@ onMounted(() => {
   statusTimer = window.setInterval(() => {
     void loadStatus(true)
   }, 15000)
+  logsTimer = window.setInterval(() => {
+    void loadLogs()
+  }, 15000)
 })
 
 onUnmounted(() => {
   if (statusTimer !== null) {
     window.clearInterval(statusTimer)
     statusTimer = null
+  }
+  if (logsTimer !== null) {
+    window.clearInterval(logsTimer)
+    logsTimer = null
   }
 })
 </script>

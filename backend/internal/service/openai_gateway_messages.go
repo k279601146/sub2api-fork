@@ -231,6 +231,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
+			s.recordOpenAIFastPolicyBlock(ctx, c, account, upstreamModel, responsesBody, blocked)
 			writeAnthropicError(c, http.StatusForbidden, "forbidden_error", blocked.Message)
 		}
 		return nil, policyErr
