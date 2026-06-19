@@ -2539,6 +2539,7 @@ export default {
       unbanFailed: '解封用户失败',
       inputDetailTitle: '输入摘要详情',
       inputDetailContent: '完整内容',
+      inputDetailAudit: '检查详情',
       queueDelay: '排队 {ms} ms',
       allGroups: '全部分组',
       allGroupsHint: '当前审计全部分组',

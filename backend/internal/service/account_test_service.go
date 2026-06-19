@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -48,6 +47,14 @@ type TestEvent struct {
 	Data     any    `json:"data,omitempty"`
 	Success  bool   `json:"success,omitempty"`
 	Error    string `json:"error,omitempty"`
+}
+
+type openAITestEndpointResult struct {
+	Name    string
+	Success bool
+	Model   string
+	Text    string
+	Error   string
 }
 
 const (
@@ -525,7 +532,6 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Determine authentication method and API URL
 	var authToken string
-	var apiURL string
 	var isOAuth bool
 	var chatgptAccountID string
 
@@ -538,7 +544,6 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 
 		// OAuth uses ChatGPT internal API
-		apiURL = chatgptCodexAPIURL
 		chatgptAccountID = account.GetChatGPTAccountID()
 	} else if account.Type == "apikey" {
 		// API Key - use Platform API
@@ -555,10 +560,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.testOpenAIChatCompletionsAPIKeyConnection(c, ctx, account, testModelID, authToken, normalizedBaseURL)
+		if err := s.testOpenAIAPIKeyConnectionBoth(c, ctx, account, testModelID, authToken, normalizedBaseURL); err != nil {
+			return err
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		return nil
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -570,32 +575,125 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth)
-	payloadBytes, _ := json.Marshal(payload)
+	if err := s.testOpenAIResponsesAPIConnection(c, ctx, account, testModelID, authToken, isOAuth, chatgptAccountID); err != nil {
+		return err
+	}
+	return nil
+}
 
-	// Send test_start event
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
-
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create request")
+func (s *AccountTestService) testOpenAIResponsesAPIConnection(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	testModelID string,
+	authToken string,
+	isOAuth bool,
+	chatgptAccountID string,
+) error {
+	apiURL := chatgptCodexAPIURL
+	if !isOAuth {
+		baseURL := account.GetOpenAIBaseURL()
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	}
 
-	// Set common headers
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	result := s.runOpenAITestEndpoint(c, ctx, account, openAITestEndpointResult{
+		Name:  "responses",
+		Model: testModelID,
+	}, apiURL, createOpenAITestPayload(testModelID, isOAuth), authToken, isOAuth, chatgptAccountID)
+	if result.Success {
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
+	return s.sendErrorAndEnd(c, result.Error)
+}
+
+func (s *AccountTestService) testOpenAIAPIKeyConnectionBoth(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	testModelID string,
+	authToken string,
+	normalizedBaseURL string,
+) error {
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Testing /v1/responses ..."})
+	responsesResult := s.runOpenAITestEndpoint(c, ctx, account, openAITestEndpointResult{
+		Name:  "responses",
+		Model: testModelID,
+	}, buildOpenAIResponsesURL(normalizedBaseURL), createOpenAITestPayload(testModelID, false), authToken, false, "")
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Testing /v1/chat/completions ..."})
+	chatResult := s.runOpenAITestEndpoint(c, ctx, account, openAITestEndpointResult{
+		Name:  "chat_completions",
+		Model: testModelID,
+	}, buildOpenAIChatCompletionsURL(normalizedBaseURL), createOpenAIChatCompletionsTestPayload(testModelID), authToken, false, "")
+
+	if responsesResult != nil {
+		s.sendEvent(c, TestEvent{Type: "status", Text: formatOpenAITestEndpointStatus("/v1/responses", responsesResult)})
+	}
+	if chatResult != nil {
+		s.sendEvent(c, TestEvent{Type: "status", Text: formatOpenAITestEndpointStatus("/v1/chat/completions", chatResult)})
+	}
+	if responsesResult != nil && chatResult != nil && responsesResult.Success && chatResult.Success {
+		s.sendEvent(c, TestEvent{Type: "content", Text: "Responses API: OK\nChat Completions: OK"})
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
+	errText := "OpenAI test failed"
+	if responsesResult != nil && !responsesResult.Success {
+		errText = fmt.Sprintf("%s; /v1/responses: %s", errText, responsesResult.Error)
+	}
+	if chatResult != nil && !chatResult.Success {
+		errText = fmt.Sprintf("%s; /v1/chat/completions: %s", errText, chatResult.Error)
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: false, Error: errText})
+	return nil
+}
+
+func (s *AccountTestService) runOpenAITestEndpoint(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	result openAITestEndpointResult,
+	apiURL string,
+	payload map[string]any,
+	authToken string,
+	isOAuth bool,
+	chatgptAccountID string,
+) *openAITestEndpointResult {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payloadBytes, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		result.Error = "Failed to create request"
+		return &result
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-
-	// Set OAuth-specific headers for ChatGPT internal API
+	req.Header.Set("Accept", "text/event-stream")
+	if customUA := strings.TrimSpace(account.GetOpenAIUserAgent()); customUA != "" {
+		req.Header.Set("User-Agent", customUA)
+	}
 	if isOAuth {
 		req.Host = "chatgpt.com"
-		req.Header.Set("accept", "text/event-stream")
 		if chatgptAccountID != "" {
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 		}
 	}
 
-	// Get proxy URL
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -603,7 +701,8 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+		result.Error = fmt.Sprintf("Request failed: %s", err.Error())
+		return &result
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -616,77 +715,41 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		result.Error = fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
-		// 401 Unauthorized: 标记账号为永久错误
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			_ = s.accountRepo.SetError(ctx, account.ID, fmt.Sprintf("Authentication failed (401): %s", string(body)))
 		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		return &result
 	}
 
-	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	var streamErr error
+	if result.Name == "responses" {
+		streamErr = s.readOpenAIResponsesTestStream(c, resp.Body)
+	} else {
+		streamErr = s.readOpenAIChatCompletionsTestStream(c, resp.Body)
+	}
+	if streamErr != nil {
+		result.Error = streamErr.Error()
+		return &result
+	}
+	result.Success = true
+	return &result
 }
 
-func (s *AccountTestService) testOpenAIChatCompletionsAPIKeyConnection(
-	c *gin.Context,
-	ctx context.Context,
-	account *Account,
-	testModelID string,
-	authToken string,
-	normalizedBaseURL string,
-) error {
-	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
-
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
-
-	payload := createOpenAIChatCompletionsTestPayload(testModelID)
-	payloadBytes, _ := json.Marshal(payload)
-
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create request")
+func formatOpenAITestEndpointStatus(endpoint string, result *openAITestEndpointResult) string {
+	if result == nil {
+		return fmt.Sprintf("%s: not tested", endpoint)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("Accept", "text/event-stream")
-	if customUA := strings.TrimSpace(account.GetOpenAIUserAgent()); customUA != "" {
-		req.Header.Set("User-Agent", customUA)
+	if result.Success {
+		return fmt.Sprintf("%s: OK", endpoint)
 	}
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+	if strings.TrimSpace(result.Error) == "" {
+		return fmt.Sprintf("%s: failed", endpoint)
 	}
-
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
-		}
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
-		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
-	}
-
-	return s.processOpenAIChatCompletionsStream(c, resp.Body)
+	return fmt.Sprintf("%s: failed - %s", endpoint, result.Error)
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -1316,6 +1379,14 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
 func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
+	if err := s.readOpenAIResponsesTestStream(c, body); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) readOpenAIResponsesTestStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
 	seenCompleted := false
 
@@ -1324,12 +1395,11 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		if err != nil {
 			if err == io.EOF {
 				if seenCompleted {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
 				}
-				return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+				return errors.New("Stream ended before response.completed")
 			}
-			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+			return fmt.Errorf("Stream read error: %s", err.Error())
 		}
 
 		line = strings.TrimSpace(line)
@@ -1340,10 +1410,9 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
 			if seenCompleted {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 				return nil
 			}
-			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+			return errors.New("Stream ended before response.completed")
 		}
 
 		var data map[string]any
@@ -1360,7 +1429,6 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
 		case "response.completed", "response.done":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
 		case "response.failed":
 			errorMsg := "OpenAI response failed"
@@ -1371,7 +1439,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 					}
 				}
 			}
-			return s.sendErrorAndEnd(c, errorMsg)
+			return errors.New(errorMsg)
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {
@@ -1379,12 +1447,20 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 					errorMsg = msg
 				}
 			}
-			return s.sendErrorAndEnd(c, errorMsg)
+			return errors.New(errorMsg)
 		}
 	}
 }
 
 func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
+	if err := s.readOpenAIChatCompletionsTestStream(c, body); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) readOpenAIChatCompletionsTestStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
 	seenCompleted := false
 
@@ -1393,12 +1469,11 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 		if err != nil {
 			if err == io.EOF {
 				if seenCompleted {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
 				}
-				return s.sendErrorAndEnd(c, "Stream ended before chat.completion completed")
+				return errors.New("Stream ended before chat.completion completed")
 			}
-			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+			return fmt.Errorf("Stream read error: %s", err.Error())
 		}
 
 		line = strings.TrimSpace(line)
@@ -1408,7 +1483,6 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
 		}
 
@@ -1422,7 +1496,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 			if msg, ok := errData["message"].(string); ok && msg != "" {
 				errorMsg = msg
 			}
-			return s.sendErrorAndEnd(c, errorMsg)
+			return errors.New(errorMsg)
 		}
 
 		choices, _ := data["choices"].([]any)

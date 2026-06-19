@@ -193,6 +193,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
+			s.recordOpenAIFastPolicyBlock(ctx, c, account, upstreamModel, responsesBody, blocked)
 			writeChatCompletionsError(c, http.StatusForbidden, "permission_error", blocked.Message)
 		}
 		return nil, policyErr

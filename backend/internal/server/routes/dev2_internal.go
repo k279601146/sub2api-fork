@@ -140,6 +140,10 @@ type dev2UsageAttribution struct {
 	apiKeyID  int64
 }
 
+type dev2ConfigResponse struct {
+	ModelName string `json:"model_name"`
+}
+
 // RegisterDev2InternalRoutes exposes service-to-service endpoints used by dev2.
 func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.Config) {
 	slog.Info(
@@ -151,6 +155,7 @@ func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.
 	group := r.Group("/internal/dev2")
 	group.Use(dev2InternalAuthMiddleware(cfg))
 	{
+		group.GET("/config", dev2Config(cfg))
 		group.POST("/users/sync", dev2SyncUser(h, cfg))
 		group.POST("/ide/auth/authorize", dev2AuthorizeIDE(h, cfg))
 		group.GET("/billing/usage", dev2BillingUsage(h, cfg))
@@ -159,6 +164,27 @@ func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.
 		group.POST("/billing/usage/refund", dev2BillingUsageRefund(h, cfg))
 		group.POST("/billing/rewards/grant", dev2BillingRewardGrant(h, cfg))
 	}
+}
+
+func dev2Config(cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		response.Success(c, dev2ConfigResponse{
+			ModelName: dev2ModelName(cfg),
+		})
+	}
+}
+
+func dev2ModelName(cfg *config.Config) string {
+	modelName := strings.TrimSpace(os.Getenv("DEV2_MODEL_NAME"))
+	if cfg != nil {
+		if configured := strings.TrimSpace(cfg.Dev2.ModelName); configured != "" {
+			modelName = configured
+		}
+	}
+	if modelName == "" {
+		modelName = strings.TrimSpace(viper.GetString("dev2.model_name"))
+	}
+	return modelName
 }
 
 func dev2InternalAuthMiddleware(cfg *config.Config) gin.HandlerFunc {

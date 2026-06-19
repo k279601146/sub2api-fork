@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
 
@@ -150,10 +149,16 @@ func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
 
-func TestAccountTestService_OpenAIAPIKeyWithoutResponsesUsesChatCompletions(t *testing.T) {
+func TestAccountTestService_OpenAIAPIKeyTestsResponsesAndChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
 
+	responsesResp := newJSONResponse(http.StatusOK, "")
+	responsesResp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.output_text.delta","delta":"hello"}
+
+data: {"type":"response.completed"}
+
+`))
 	resp := newJSONResponse(http.StatusOK, "")
 	resp.Body = io.NopCloser(strings.NewReader(`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"pong"}}]}
 
@@ -163,7 +168,7 @@ data: [DONE]
 
 `))
 
-	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{responsesResp, resp}}
 	svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
 	account := &Account{
 		ID:          91,
@@ -177,23 +182,30 @@ data: [DONE]
 				"gpt-5.4": "deepseek-chat",
 			},
 		},
-		Extra: map[string]any{
-			openai_compat.ExtraKeyResponsesSupported: false,
-		},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
 	require.NoError(t, err)
-	require.Len(t, upstream.requests, 1)
-	require.Equal(t, "https://api.deepseek.com/v1/chat/completions", upstream.requests[0].URL.String())
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://api.deepseek.com/v1/responses", upstream.requests[0].URL.String())
+	require.Equal(t, "https://api.deepseek.com/v1/chat/completions", upstream.requests[1].URL.String())
 	require.Equal(t, "Bearer test-key", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "Bearer test-key", upstream.requests[1].Header.Get("Authorization"))
 	require.Equal(t, "text/event-stream", upstream.requests[0].Header.Get("Accept"))
-	body, err := io.ReadAll(upstream.requests[0].Body)
+	require.Equal(t, "text/event-stream", upstream.requests[1].Header.Get("Accept"))
+	responsesBody, err := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, err)
+	require.Contains(t, string(responsesBody), `"input"`)
+	require.Contains(t, string(responsesBody), `"model":"deepseek-chat"`)
+	body, err := io.ReadAll(upstream.requests[1].Body)
 	require.NoError(t, err)
 	require.Contains(t, string(body), `"messages"`)
 	require.Contains(t, string(body), `"model":"deepseek-chat"`)
 	require.NotContains(t, string(body), `"input"`)
 	require.NotContains(t, string(body), `"instructions"`)
+	require.Contains(t, recorder.Body.String(), `/v1/responses: OK`)
+	require.Contains(t, recorder.Body.String(), `/v1/chat/completions: OK`)
+	require.Contains(t, recorder.Body.String(), `"text":"hello"`)
 	require.Contains(t, recorder.Body.String(), `"text":"pong"`)
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 }

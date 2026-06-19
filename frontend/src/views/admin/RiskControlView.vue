@@ -807,6 +807,11 @@
             </div>
             <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
           </div>
+
+          <div v-if="inputDetailRow.error" class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.inputDetailAudit') }}</p>
+            <pre class="mt-4 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:bg-amber-900/20 dark:text-amber-100">{{ inputDetailRow.error }}</pre>
+          </div>
         </div>
 
         <template #footer>

@@ -466,12 +466,21 @@ const handleEvent = (event: {
   type: string
   text?: string
   model?: string
+  status?: string
   success?: boolean
   error?: string
   image_url?: string
   mime_type?: string
 }) => {
   switch (event.type) {
+    case 'status':
+      if (streamingContent.value) {
+        addLine(streamingContent.value, 'text-green-300')
+        streamingContent.value = ''
+      }
+      addLine(event.text || event.status || '', 'text-cyan-300')
+      break
+
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {

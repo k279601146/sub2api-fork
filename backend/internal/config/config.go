@@ -96,6 +96,7 @@ type Config struct {
 
 type Dev2Config struct {
 	InternalSecret string `mapstructure:"internal_secret"`
+	ModelName      string `mapstructure:"model_name"`
 }
 
 type LogConfig struct {
@@ -1328,6 +1329,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
+	cfg.Dev2.InternalSecret = strings.TrimSpace(cfg.Dev2.InternalSecret)
+	cfg.Dev2.ModelName = strings.TrimSpace(cfg.Dev2.ModelName)
 	cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
 	cfg.Log.Format = strings.ToLower(strings.TrimSpace(cfg.Log.Format))
 	cfg.Log.ServiceName = strings.TrimSpace(cfg.Log.ServiceName)
@@ -1668,6 +1671,7 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
 	viper.SetDefault("dev2.internal_secret", "")
+	viper.SetDefault("dev2.model_name", "")
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久

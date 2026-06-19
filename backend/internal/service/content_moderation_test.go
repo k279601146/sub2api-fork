@@ -1088,6 +1088,9 @@ func TestChinaGatewayDouyinHitBlocksAndDoesNotCallClassifier(t *testing.T) {
 	require.Len(t, hashCache.recorded, 1)
 	require.Len(t, repo.logs, 1)
 	require.Equal(t, ContentModerationActionDouyinBlock, repo.logs[0].Action)
+	require.Contains(t, repo.logs[0].Error, "douyin status=200")
+	require.Contains(t, repo.logs[0].Error, "action="+ContentModerationActionDouyinBlock)
+	require.Contains(t, repo.logs[0].Error, `"hit":true`)
 }
 
 func TestChinaGatewayDouyinFailureUsesClassifierAllow(t *testing.T) {
@@ -1097,7 +1100,8 @@ func TestChinaGatewayDouyinFailureUsesClassifierAllow(t *testing.T) {
 	classifierServer := newChinaGatewayClassifierServer(t, `{"action":"allow","category":"other","confidence":0.91,"reason":"普通编程请求"}`, &classifierRequests, http.StatusOK)
 
 	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
-	svc := newChinaGatewayTestService(t, cfg, &contentModerationTestRepo{}, &contentModerationTestHashCache{}, nil, nil)
+	repo := &contentModerationTestRepo{}
+	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, nil, nil)
 
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
 		UserID:   1001,
@@ -1111,6 +1115,36 @@ func TestChinaGatewayDouyinFailureUsesClassifierAllow(t *testing.T) {
 	require.Equal(t, ContentModerationActionClassifierAllow, decision.Action)
 	require.Equal(t, 2, douyinRequests)
 	require.Equal(t, 1, classifierRequests)
+	require.Empty(t, repo.logs)
+}
+
+func TestChinaGatewayDouyinPassRecordsResponseDetail(t *testing.T) {
+	douyinRequests := 0
+	classifierRequests := 0
+	douyinServer := newChinaGatewayDouyinServer(t, http.StatusOK, []byte(`{"data":{"tasks":[{"predicts":[{"hit":false,"label":"normal"}]}]}}`), &douyinRequests)
+	classifierServer := newChinaGatewayClassifierServer(t, `{"action":"allow","category":"other","confidence":1}`, &classifierRequests, http.StatusOK)
+	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
+	cfg.RecordNonHits = true
+	repo := &contentModerationTestRepo{}
+	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, nil, nil)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		UserID:   1001,
+		Model:    "gpt-5.5",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"你是谁"}]}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, ContentModerationActionDouyinPass, decision.Action)
+	require.Equal(t, 2, douyinRequests)
+	require.Zero(t, classifierRequests)
+	require.Len(t, repo.logs, 1)
+	require.Equal(t, ContentModerationActionDouyinPass, repo.logs[0].Action)
+	require.Contains(t, repo.logs[0].Error, "douyin status=200")
+	require.Contains(t, repo.logs[0].Error, "action="+ContentModerationActionDouyinPass)
+	require.Contains(t, repo.logs[0].Error, `"hit":false`)
 }
 
 func TestChinaGatewayClassifierBlockAndAutoBan(t *testing.T) {
@@ -1121,9 +1155,10 @@ func TestChinaGatewayClassifierBlockAndAutoBan(t *testing.T) {
 
 	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
 	repo := &contentModerationTestRepo{flaggedCounts: []int{1}}
+	hashCache := &contentModerationTestHashCache{}
 	userRepo := &contentModerationTestUserRepo{user: &User{ID: 1001, Email: "user@example.com", Status: StatusActive}}
 	invalidator := &contentModerationTestAuthCacheInvalidator{}
-	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, userRepo, invalidator)
+	svc := newChinaGatewayTestService(t, cfg, repo, hashCache, userRepo, invalidator)
 
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
 		UserID:    1001,
@@ -1142,6 +1177,7 @@ func TestChinaGatewayClassifierBlockAndAutoBan(t *testing.T) {
 	require.Equal(t, StatusDisabled, userRepo.updated[0].Status)
 	require.Equal(t, []int64{1001}, invalidator.userIDs)
 	require.Equal(t, 1, classifierRequests)
+	require.Len(t, hashCache.recorded, 1)
 }
 
 func TestChinaGatewayClassifierErrorBlocks(t *testing.T) {
@@ -1152,7 +1188,8 @@ func TestChinaGatewayClassifierErrorBlocks(t *testing.T) {
 
 	cfg := newChinaGatewayTestConfig(douyinServer.URL, classifierServer.URL)
 	repo := &contentModerationTestRepo{}
-	svc := newChinaGatewayTestService(t, cfg, repo, &contentModerationTestHashCache{}, nil, nil)
+	hashCache := &contentModerationTestHashCache{}
+	svc := newChinaGatewayTestService(t, cfg, repo, hashCache, nil, nil)
 
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
 		UserID:   1001,
@@ -1166,6 +1203,7 @@ func TestChinaGatewayClassifierErrorBlocks(t *testing.T) {
 	require.Equal(t, ContentModerationActionClassifierErrorBlock, decision.Action)
 	require.Equal(t, 1, classifierRequests)
 	require.Len(t, repo.logs, 1)
+	require.Empty(t, hashCache.recorded)
 }
 
 func TestChinaGatewayHashHitSkipsDouyinAndClassifier(t *testing.T) {

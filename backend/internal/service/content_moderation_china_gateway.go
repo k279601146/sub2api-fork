@@ -22,9 +22,10 @@ const (
 	chinaGatewayDouyinTokenPath      = "/api/apps/v2/token"
 	chinaGatewayDouyinTextPath       = "/api/v2/tags/text/antidirt"
 
-	chinaGatewayPolicyVersion = "china_region_safety_gateway_v1"
-	chinaGatewayAllowCacheTTL = 5 * time.Minute
-	chinaGatewayBlockCacheTTL = 24 * time.Hour
+	chinaGatewayPolicyVersion       = "china_region_safety_gateway_v1"
+	chinaGatewayAllowCacheTTL       = 5 * time.Minute
+	chinaGatewayBlockCacheTTL       = 24 * time.Hour
+	chinaGatewayAuditDetailMaxRunes = 1200
 )
 
 type chinaGatewayCachedDecision struct {
@@ -48,6 +49,12 @@ type douyinTextModerationRequest struct {
 
 type douyinTextModerationTask struct {
 	Content string `json:"content"`
+}
+
+type douyinModerationResult struct {
+	Action     string
+	HTTPStatus int
+	Body       string
 }
 
 type classifierRequest struct {
@@ -93,35 +100,47 @@ func (s *ContentModerationService) checkChinaRegionSafetyGateway(ctx context.Con
 			slog.Warn("content_moderation.china_gateway.hash_check_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "error", err)
 		}
 		if matched {
-			return s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionHashBlock, "china_region/hash_hit", 1, nil, "", "")
+			return s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionHashBlock, "china_region/hash_hit", 1, nil, "", "", false)
 		}
 	}
 	if cached, ok := s.getChinaGatewayCachedDecision(hashText); ok {
 		if cached.Allowed {
 			return &ContentModerationDecision{Allowed: true, Action: cached.Action, HighestCategory: cached.HighestCategory, HighestScore: cached.HighestScore}
 		}
-		return s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, cached.Action, cached.HighestCategory, cached.HighestScore, nil, cached.Message, "")
+		return s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, cached.Action, cached.HighestCategory, cached.HighestScore, nil, cached.Message, "", false)
 	}
 	if err := validateChinaGatewayConfig(cfg); err != nil {
 		return s.chinaGatewayConfigErrorDecision(ctx, input, &content, err.Error())
 	}
 
 	start := time.Now()
-	result, err := s.callDouyinTextModeration(ctx, cfg, text)
+	douyinResult, err := s.callDouyinTextModeration(ctx, cfg, text)
 	douyinLatency := int(time.Since(start).Milliseconds())
+	douyinDetail := ""
 	if err == nil {
-		switch result {
+		douyinDetail = formatChinaGatewayAuditDetail("douyin", douyinResult.HTTPStatus, douyinResult.Action, douyinResult.Body)
+		switch douyinResult.Action {
 		case ContentModerationActionDouyinBlock:
-			decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionDouyinBlock, "china_region/douyin_hit", 1, &douyinLatency, "", "")
+			decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionDouyinBlock, "china_region/douyin_hit", 1, &douyinLatency, "", douyinDetail, true)
 			s.setChinaGatewayCachedDecision(hashText, chinaGatewayCachedDecision{Allowed: false, Action: decision.Action, HighestCategory: decision.HighestCategory, HighestScore: decision.HighestScore, Message: decision.Message}, chinaGatewayBlockCacheTTL)
 			return decision
 		case ContentModerationActionDouyinPass:
-			s.chinaGatewayAllowDecision(ctx, input, cfg, content, ContentModerationActionDouyinPass, "china_region/douyin_pass", 0, &douyinLatency)
+			s.chinaGatewayAllowDecision(ctx, input, cfg, content, ContentModerationActionDouyinPass, "china_region/douyin_pass", 0, &douyinLatency, douyinDetail)
 			s.setChinaGatewayCachedDecision(hashText, chinaGatewayCachedDecision{Allowed: true, Action: ContentModerationActionDouyinPass, HighestCategory: "china_region/douyin_pass"}, chinaGatewayAllowCacheTTL)
 			return &ContentModerationDecision{Allowed: true, Action: ContentModerationActionDouyinPass, HighestCategory: "china_region/douyin_pass"}
 		}
 	}
 	if err != nil {
+		status := 0
+		body := ""
+		if douyinResult != nil {
+			status = douyinResult.HTTPStatus
+			body = douyinResult.Body
+		}
+		douyinDetail = appendChinaGatewayAuditDetail(
+			formatChinaGatewayAuditDetail("douyin", status, "error", body),
+			"error="+trimRunes(strings.TrimSpace(err.Error()), chinaGatewayAuditDetailMaxRunes),
+		)
 		slog.Warn("content_moderation.china_gateway.douyin_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "latency_ms", douyinLatency, "error", err)
 	}
 
@@ -130,7 +149,7 @@ func (s *ContentModerationService) checkChinaRegionSafetyGateway(ctx context.Con
 	classifierLatency := int(time.Since(classifierStart).Milliseconds())
 	if classifierErr != nil {
 		slog.Warn("content_moderation.china_gateway.classifier_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "latency_ms", classifierLatency, "error", classifierErr)
-		decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionClassifierErrorBlock, "china_region/classifier_error", 1, &classifierLatency, "", classifierErr.Error())
+		decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionClassifierErrorBlock, "china_region/classifier_error", 1, &classifierLatency, "", appendChinaGatewayAuditDetail(douyinDetail, classifierErr.Error()), false)
 		s.setChinaGatewayCachedDecision(hashText, chinaGatewayCachedDecision{Allowed: false, Action: decision.Action, HighestCategory: decision.HighestCategory, HighestScore: decision.HighestScore, Message: decision.Message}, chinaGatewayBlockCacheTTL)
 		return decision
 	}
@@ -141,16 +160,16 @@ func (s *ContentModerationService) checkChinaRegionSafetyGateway(ctx context.Con
 	score := classifierDecision.Confidence
 	switch strings.ToLower(strings.TrimSpace(classifierDecision.Action)) {
 	case "allow":
-		s.chinaGatewayAllowDecision(ctx, input, cfg, content, ContentModerationActionClassifierAllow, category, score, &classifierLatency)
+		s.chinaGatewayAllowDecision(ctx, input, cfg, content, ContentModerationActionClassifierAllow, category, score, &classifierLatency, douyinDetail)
 		s.setChinaGatewayCachedDecision(hashText, chinaGatewayCachedDecision{Allowed: true, Action: ContentModerationActionClassifierAllow, HighestCategory: category, HighestScore: score}, chinaGatewayAllowCacheTTL)
 		return &ContentModerationDecision{Allowed: true, Action: ContentModerationActionClassifierAllow, HighestCategory: category, HighestScore: score}
 	case "block":
-		decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionClassifierBlock, category, score, &classifierLatency, "", classifierDecision.Reason)
+		decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionClassifierBlock, category, score, &classifierLatency, "", appendChinaGatewayAuditDetail(douyinDetail, classifierDecision.Reason), true)
 		s.setChinaGatewayCachedDecision(hashText, chinaGatewayCachedDecision{Allowed: false, Action: decision.Action, HighestCategory: decision.HighestCategory, HighestScore: decision.HighestScore, Message: decision.Message}, chinaGatewayBlockCacheTTL)
 		return decision
 	default:
 		errText := fmt.Sprintf("classifier returned invalid action %q", classifierDecision.Action)
-		decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionClassifierErrorBlock, "china_region/classifier_invalid", 1, &classifierLatency, "", errText)
+		decision := s.chinaGatewayBlockDecision(ctx, input, cfg, content, hashText, ContentModerationActionClassifierErrorBlock, "china_region/classifier_invalid", 1, &classifierLatency, "", appendChinaGatewayAuditDetail(douyinDetail, errText), false)
 		s.setChinaGatewayCachedDecision(hashText, chinaGatewayCachedDecision{Allowed: false, Action: decision.Action, HighestCategory: decision.HighestCategory, HighestScore: decision.HighestScore, Message: decision.Message}, chinaGatewayBlockCacheTTL)
 		return decision
 	}
@@ -178,45 +197,46 @@ func validateChinaGatewayConfig(cfg *ContentModerationConfig) error {
 	return nil
 }
 
-func (s *ContentModerationService) callDouyinTextModeration(ctx context.Context, cfg *ContentModerationConfig, text string) (string, error) {
+func (s *ContentModerationService) callDouyinTextModeration(ctx context.Context, cfg *ContentModerationConfig, text string) (*douyinModerationResult, error) {
 	token, err := s.douyinAccessToken(ctx, cfg)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	endpoint, err := url.JoinPath(strings.TrimRight(cfg.DouyinBaseURL, "/"), chinaGatewayDouyinTextPath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	raw, err := json.Marshal(douyinTextModerationRequest{Tasks: []douyinTextModerationTask{{Content: text}}})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.DouyinTimeoutMS)*time.Millisecond)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(raw))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Token", token)
 
 	resp, err := s.httpClientOrDefault().Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	bodySummary := sanitizeChinaGatewayAuditBody(body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("douyin text moderation status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return &douyinModerationResult{HTTPStatus: resp.StatusCode, Body: bodySummary}, fmt.Errorf("douyin text moderation status %d: %s", resp.StatusCode, bodySummary)
 	}
 	result, err := parseDouyinTextModerationResult(body)
 	if err != nil {
-		return "", err
+		return &douyinModerationResult{HTTPStatus: resp.StatusCode, Body: bodySummary}, err
 	}
-	return result, nil
+	return &douyinModerationResult{Action: result, HTTPStatus: resp.StatusCode, Body: bodySummary}, nil
 }
 
 func (s *ContentModerationService) douyinAccessToken(ctx context.Context, cfg *ContentModerationConfig) (string, error) {
@@ -465,10 +485,10 @@ func (s *ContentModerationService) chinaGatewayConfigErrorDecision(ctx context.C
 		text = content.ExcerptText()
 		hashText = content.Hash()
 	}
-	return s.chinaGatewayBlockDecision(ctx, input, cfg, ContentModerationInput{Text: text}, hashText, ContentModerationActionChinaConfigErrorBlock, "china_region/config_error", 1, nil, "中国地区内容安全网关配置不可用，请联系管理员", errText)
+	return s.chinaGatewayBlockDecision(ctx, input, cfg, ContentModerationInput{Text: text}, hashText, ContentModerationActionChinaConfigErrorBlock, "china_region/config_error", 1, nil, "中国地区内容安全网关配置不可用，请联系管理员", errText, false)
 }
 
-func (s *ContentModerationService) chinaGatewayBlockDecision(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string, action string, category string, score float64, latency *int, message string, errText string) *ContentModerationDecision {
+func (s *ContentModerationService) chinaGatewayBlockDecision(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string, action string, category string, score float64, latency *int, message string, errText string, recordHash bool) *ContentModerationDecision {
 	if cfg == nil {
 		cfg = defaultContentModerationConfig()
 	}
@@ -477,7 +497,7 @@ func (s *ContentModerationService) chinaGatewayBlockDecision(ctx context.Context
 	}
 	scores := map[string]float64{category: score}
 	log := s.buildLog(input, cfg, action, true, category, score, scores, content.ExcerptText(), latency, nil, errText)
-	if hashText != "" && s.hashCache != nil {
+	if recordHash && hashText != "" && s.hashCache != nil {
 		if err := s.hashCache.RecordFlaggedInputHash(ctx, hashText); err != nil {
 			slog.Warn("content_moderation.china_gateway.record_hash_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "error", err)
 		}
@@ -508,15 +528,90 @@ func (s *ContentModerationService) chinaGatewayBlockDecision(ctx context.Context
 	}
 }
 
-func (s *ContentModerationService) chinaGatewayAllowDecision(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, action string, category string, score float64, latency *int) {
+func (s *ContentModerationService) chinaGatewayAllowDecision(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, action string, category string, score float64, latency *int, detail string) {
 	if s == nil || cfg == nil || !cfg.RecordNonHits || s.repo == nil {
 		return
 	}
 	scores := map[string]float64{category: score}
-	log := s.buildLog(input, cfg, action, false, category, score, scores, content.ExcerptText(), latency, nil, "")
+	log := s.buildLog(input, cfg, action, false, category, score, scores, content.ExcerptText(), latency, nil, detail)
 	if err := s.repo.CreateLog(ctx, log); err != nil {
 		slog.Warn("content_moderation.china_gateway.allow_log_failed", "user_id", input.UserID, "endpoint", input.Endpoint, "action", action, "error", err)
 	}
+}
+
+func formatChinaGatewayAuditDetail(provider string, status int, action string, body string) string {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		provider = "china_gateway"
+	}
+	parts := []string{provider}
+	if status > 0 {
+		parts = append(parts, fmt.Sprintf("status=%d", status))
+	}
+	if action != "" {
+		parts = append(parts, "action="+action)
+	}
+	if body != "" {
+		parts = append(parts, "response="+body)
+	}
+	return strings.Join(parts, " ")
+}
+
+func appendChinaGatewayAuditDetail(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return trimRunes(strings.Join(out, " | "), chinaGatewayAuditDetailMaxRunes)
+}
+
+func sanitizeChinaGatewayAuditBody(body []byte) string {
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return ""
+	}
+	var payload any
+	if json.Unmarshal(body, &payload) == nil {
+		payload = redactChinaGatewayAuditValue(payload)
+		if raw, err := json.Marshal(payload); err == nil {
+			text = string(raw)
+		}
+	}
+	return trimRunes(text, chinaGatewayAuditDetailMaxRunes)
+}
+
+func redactChinaGatewayAuditValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			if isChinaGatewaySecretField(key) {
+				out[key] = "[REDACTED]"
+				continue
+			}
+			out[key] = redactChinaGatewayAuditValue(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = redactChinaGatewayAuditValue(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func isChinaGatewaySecretField(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	return strings.Contains(key, "token") ||
+		strings.Contains(key, "secret") ||
+		strings.Contains(key, "authorization") ||
+		strings.Contains(key, "credential")
 }
 
 func chinaGatewayBlockMessage(cfg *ContentModerationConfig) string {

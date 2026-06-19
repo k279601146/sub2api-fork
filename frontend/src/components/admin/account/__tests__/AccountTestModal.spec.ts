@@ -86,6 +86,33 @@ function mountModal() {
   })
 }
 
+function mountOpenAIModal() {
+  return mount(AccountTestModal, {
+    props: {
+      show: false,
+      account: {
+        id: 43,
+        name: 'OpenAI Test',
+        platform: 'openai',
+        type: 'apikey',
+        status: 'active'
+      }
+    } as any,
+    global: {
+      stubs: {
+        BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+        Select: { template: '<div class="select-stub"></div>' },
+        TextArea: {
+          props: ['modelValue'],
+          emits: ['update:modelValue'],
+          template: '<textarea class="textarea-stub" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+        },
+        Icon: true
+      }
+    }
+  })
+}
+
 describe('AccountTestModal', () => {
   beforeEach(() => {
     getAvailableModels.mockResolvedValue([
@@ -143,5 +170,41 @@ describe('AccountTestModal', () => {
     const preview = wrapper.find('img[alt="test-image-1"]')
     expect(preview.exists()).toBe(true)
     expect(preview.attributes('src')).toBe('data:image/png;base64,QUJD')
+  })
+
+  it('展示 OpenAI 双端点测试状态事件', async () => {
+    getAvailableModels.mockResolvedValueOnce([{ id: 'gpt-5.5', display_name: 'GPT 5.5' }])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-5.5"}\n',
+        'data: {"type":"status","text":"Testing /v1/responses ..."}\n',
+        'data: {"type":"content","text":"responses ok"}\n',
+        'data: {"type":"status","text":"/v1/responses: OK"}\n',
+        'data: {"type":"status","text":"Testing /v1/chat/completions ..."}\n',
+        'data: {"type":"content","text":"chat ok"}\n',
+        'data: {"type":"status","text":"/v1/chat/completions: OK"}\n',
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountOpenAIModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('Testing /v1/responses ...')
+    expect(text).toContain('responses ok')
+    expect(text).toContain('/v1/responses: OK')
+    expect(text).toContain('Testing /v1/chat/completions ...')
+    expect(text).toContain('chat ok')
+    expect(text).toContain('/v1/chat/completions: OK')
   })
 })
