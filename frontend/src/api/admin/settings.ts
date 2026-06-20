@@ -459,6 +459,7 @@ export interface SystemSettings {
 
   // Dev2 model name
   dev2_model_name: string;
+  dev2_env_config: string;
 
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean;
@@ -668,6 +669,7 @@ export interface UpdateSettingsRequest {
   fallback_model_gemini?: string;
   fallback_model_antigravity?: string;
   dev2_model_name?: string;
+  dev2_env_config?: string;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
   ops_monitoring_enabled?: boolean;

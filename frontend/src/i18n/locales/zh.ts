@@ -2158,7 +2158,16 @@ export default {
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
       },
-      claudeCode: {
+      dev2: {
+        title: 'Dev2 配置',
+        description: '配置通过内部配置接口下发给 dev2 服务的运行环境',
+        modelName: '默认模型名称',
+        modelNamePlaceholder: '例如 gpt-5.5',
+        modelNameHint: '会作为 model_name 和 DEV2_DEFAULT_MODEL_ID 下发给 dev2；留空则使用 dev2 本地模型配置。',
+        envConfig: '环境变量配置',
+        envConfigPlaceholder: 'KEY=value\nOPENAI_BASE_URL=http://localhost:3000/v1\nOPENAI_API_KEY=sk-...',
+        envConfigHint: '每行一个 KEY=value。空行和注释会被忽略；这些值只会返回给通过内部密钥认证的 dev2 接口。'
+      },      claudeCode: {
         title: 'Claude Code 客户端限制',
         tooltip:
           '启用后，此分组仅允许 Claude Code 官方客户端访问。非 Claude Code 请求将被拒绝或降级到指定分组。',

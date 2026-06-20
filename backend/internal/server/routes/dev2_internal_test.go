@@ -9,10 +9,10 @@ import (
 )
 
 func TestDev2ModelNameUsesConfigValue(t *testing.T) {
-	t.Setenv("DEV2_MODEL_NAME", "env-model")
+	t.Setenv("DEV2_MODEL_NAME", "")
 	viper.Reset()
 
-	got := dev2ModelName(&config.Config{
+	got := dev2ModelName(nil, nil, &config.Config{
 		Dev2: config.Dev2Config{
 			ModelName: "configured-model",
 		},
@@ -25,7 +25,7 @@ func TestDev2ModelNameFallsBackToEnv(t *testing.T) {
 	t.Setenv("DEV2_MODEL_NAME", "env-model")
 	viper.Reset()
 
-	require.Equal(t, "env-model", dev2ModelName(nil))
+	require.Equal(t, "env-model", dev2ModelName(nil, nil, nil))
 }
 
 func TestDev2ModelNameFallsBackToViper(t *testing.T) {
@@ -33,5 +33,5 @@ func TestDev2ModelNameFallsBackToViper(t *testing.T) {
 	viper.Reset()
 	viper.Set("dev2.model_name", "viper-model")
 
-	require.Equal(t, "viper-model", dev2ModelName(nil))
+	require.Equal(t, "viper-model", dev2ModelName(nil, nil, nil))
 }

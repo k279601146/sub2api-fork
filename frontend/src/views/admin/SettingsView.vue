@@ -3258,6 +3258,53 @@
 
         <!-- Tab: Gateway — Claude Code, Scheduling -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.dev2.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.dev2.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.dev2.modelName") }}
+                </label>
+                <input
+                  v-model="form.dev2_model_name"
+                  type="text"
+                  class="input max-w-md font-mono text-sm"
+                  :placeholder="t('admin.settings.dev2.modelNamePlaceholder')"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.dev2.modelNameHint") }}
+                </p>
+              </div>
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.dev2.envConfig") }}
+                </label>
+                <textarea
+                  v-model="form.dev2_env_config"
+                  rows="14"
+                  class="input min-h-72 font-mono text-xs leading-5"
+                  spellcheck="false"
+                  :placeholder="t('admin.settings.dev2.envConfigPlaceholder')"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.dev2.envConfigHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
           <!-- Claude Code Settings -->
           <div class="card">
             <div
@@ -6705,6 +6752,7 @@ const form = reactive<SettingsForm>({
   fallback_model_gemini: "gemini-2.5-pro",
   fallback_model_antigravity: "gemini-2.5-pro",
   dev2_model_name: "",
+  dev2_env_config: "",
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
@@ -7362,6 +7410,7 @@ async function loadSettings() {
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
+    form.dev2_env_config = settings.dev2_env_config || "";
     form.linuxdo_connect_client_secret = "";
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";
@@ -7793,6 +7842,7 @@ async function saveSettings() {
       fallback_model_gemini: form.fallback_model_gemini,
       fallback_model_antigravity: form.fallback_model_antigravity,
       dev2_model_name: form.dev2_model_name,
+      dev2_env_config: form.dev2_env_config,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
@@ -7902,6 +7952,7 @@ async function saveSettings() {
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
+    form.dev2_env_config = updated.dev2_env_config || "";
     form.linuxdo_connect_client_secret = "";
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";

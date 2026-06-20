@@ -5412,6 +5412,16 @@ export default {
         subscriptionGroup: 'Subscription Group',
         subscriptionValidityDays: 'Validity (days)'
       },
+      dev2: {
+        title: 'Dev2 Settings',
+        description: 'Configure the runtime environment returned to the dev2 service through the internal config endpoint',
+        modelName: 'Default Model Name',
+        modelNamePlaceholder: 'e.g. gpt-5.5',
+        modelNameHint: 'Exposed as model_name and DEV2_DEFAULT_MODEL_ID for dev2. Leave empty to use the dev2 local model config.',
+        envConfig: 'Environment Config',
+        envConfigPlaceholder: 'KEY=value\\nOPENAI_BASE_URL=http://localhost:3000/v1\\nOPENAI_API_KEY=sk-...',
+        envConfigHint: 'One KEY=value per line. Blank lines and comments are ignored. Values are returned only to the authenticated internal dev2 endpoint.'
+      },
       claudeCode: {
         title: 'Claude Code Settings',
         description: 'Control Claude Code client access requirements',

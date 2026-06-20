@@ -23,8 +23,13 @@ const (
 	AffiliateRebateRateDefault          = 20.0
 	AffiliateRebateRateMin              = 0.0
 	AffiliateRebateRateMax              = 100.0
-	AffiliateEnabledDefault             = false // 邀请返利总开关默认关�?	AffiliateRebateFreezeHoursDefault   = 0     // 0 = 不冻结（向后兼容�?	AffiliateRebateFreezeHoursMax       = 720   // 最�?30 �?	AffiliateRebateDurationDaysDefault  = 0     // 0 = 永久有效
-	AffiliateRebateDurationDaysMax      = 3650  // ~10 �?	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上�?)
+	AffiliateEnabledDefault             = false // 邀请返利总开关默认关�?
+	AffiliateRebateFreezeHoursDefault   = 0     // 0 = 不冻结（向后兼容�?
+	AffiliateRebateFreezeHoursMax       = 720   // 最�?30 �?
+	AffiliateRebateDurationDaysDefault  = 0     // 0 = 永久有效
+	AffiliateRebateDurationDaysMax      = 3650  // ~10 �?
+	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上�?
+)
 
 // Platform constants
 const (
@@ -36,8 +41,13 @@ const (
 
 // Account type constants
 const (
-	AccountTypeOAuth          = domain.AccountTypeOAuth          // OAuth类型账号（full scope: profile + inference�?	AccountTypeSetupToken     = domain.AccountTypeSetupToken     // Setup Token类型账号（inference only scope�?	AccountTypeAPIKey         = domain.AccountTypeAPIKey         // API Key类型账号
-	AccountTypeUpstream       = domain.AccountTypeUpstream       // 上游透传类型账号（通过 Base URL + API Key 连接上游�?	AccountTypeBedrock        = domain.AccountTypeBedrock        // AWS Bedrock 类型账号（通过 SigV4 签名�?API Key 连接 Bedrock，由 credentials.auth_mode 区分�?	AccountTypeServiceAccount = domain.AccountTypeServiceAccount // Google Service Account 类型账号（用�?Vertex AI�?)
+	AccountTypeOAuth          = domain.AccountTypeOAuth          // OAuth类型账号（full scope: profile + inference�?
+	AccountTypeSetupToken     = domain.AccountTypeSetupToken     // Setup Token类型账号（inference only scope�?
+	AccountTypeAPIKey         = domain.AccountTypeAPIKey         // API Key类型账号
+	AccountTypeUpstream       = domain.AccountTypeUpstream       // 上游透传类型账号（通过 Base URL + API Key 连接上游�?
+	AccountTypeBedrock        = domain.AccountTypeBedrock        // AWS Bedrock 类型账号（通过 SigV4 签名�?API Key 连接 Bedrock，由 credentials.auth_mode 区分�?
+	AccountTypeServiceAccount = domain.AccountTypeServiceAccount // Google Service Account 类型账号（用�?Vertex AI�?
+)
 
 // Redeem type constants
 const (
@@ -56,12 +66,15 @@ const (
 
 // Admin adjustment type constants
 const (
-	AdjustmentTypeAdminBalance     = domain.AdjustmentTypeAdminBalance     // 管理员调整余�?	AdjustmentTypeAdminConcurrency = domain.AdjustmentTypeAdminConcurrency // 管理员调整并发数
+	AdjustmentTypeAdminBalance     = domain.AdjustmentTypeAdminBalance     // 管理员调整余�?
+	AdjustmentTypeAdminConcurrency = domain.AdjustmentTypeAdminConcurrency // 管理员调整并发数
 )
 
 // Group subscription type constants
 const (
-	SubscriptionTypeStandard     = domain.SubscriptionTypeStandard     // 标准计费模式（按余额扣费�?	SubscriptionTypeSubscription = domain.SubscriptionTypeSubscription // 订阅模式（按限额控制�?)
+	SubscriptionTypeStandard     = domain.SubscriptionTypeStandard     // 标准计费模式（按余额扣费�?
+	SubscriptionTypeSubscription = domain.SubscriptionTypeSubscription // 订阅模式（按限额控制�?
+)
 
 // Subscription status constants
 const (
@@ -70,34 +83,52 @@ const (
 	SubscriptionStatusSuspended = domain.SubscriptionStatusSuspended
 )
 
-// LinuxDoConnectSyntheticEmailDomain �?LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）�?const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
+// LinuxDoConnectSyntheticEmailDomain �?LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）�?
+const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
 
-// OIDCConnectSyntheticEmailDomain �?OIDC 用户的合成邮箱后缀（RFC 保留域名）�?const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
+// OIDCConnectSyntheticEmailDomain �?OIDC 用户的合成邮箱后缀（RFC 保留域名）�?
+const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
 
-// WeChatConnectSyntheticEmailDomain �?WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）�?const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
+// WeChatConnectSyntheticEmailDomain �?WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）�?
+const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
 
 // Setting keys
 const (
 	// 注册设置
-	SettingKeyRegistrationEnabled              = "registration_enabled"                // 是否开放注�?	SettingKeyEmailVerifyEnabled               = "email_verify_enabled"                // 是否开启邮件验�?	SettingKeyRegistrationEmailSuffixWhitelist = "registration_email_suffix_whitelist" // 注册邮箱后缀白名单（JSON 数组�?	SettingKeyPromoCodeEnabled                 = "promo_code_enabled"                  // 是否启用优惠码功�?	SettingKeyPasswordResetEnabled             = "password_reset_enabled"              // 是否启用忘记密码功能（需要先开启邮件验证）
-	SettingKeyFrontendURL                      = "frontend_url"                        // 前端基础URL，用于生成邮件中的重置密码链�?	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
-	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开�?	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100�?	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"       // 返利冻结期（小时�?=不冻结）
-	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"      // 返利有效期（天，0=永久�?	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"    // 单人返利上限�?=无上限）
-	SettingKeyRiskControlEnabled               = "risk_control_enabled"                // 是否启用风控中心入口与审计链�?	SettingKeyContentModerationConfig          = "content_moderation_config"           // 内容审计配置（JSON�?	SettingKeyLoginAgreementEnabled            = "login_agreement_enabled"             // 登录前是否要求同意条�?	SettingKeyLoginAgreementMode               = "login_agreement_mode"                // 条款确认展示模式：modal / checkbox
-	SettingKeyLoginAgreementUpdatedAt          = "login_agreement_updated_at"          // 条款更新日期（展示用�?	SettingKeyLoginAgreementDocuments          = "login_agreement_documents"           // 条款文档列表（JSON，Markdown 内容�?
+	SettingKeyRegistrationEnabled              = "registration_enabled"                // 是否开放注�?
+	SettingKeyEmailVerifyEnabled               = "email_verify_enabled"                // 是否开启邮件验�?
+	SettingKeyRegistrationEmailSuffixWhitelist = "registration_email_suffix_whitelist" // 注册邮箱后缀白名单（JSON 数组�?
+	SettingKeyPromoCodeEnabled                 = "promo_code_enabled"                  // 是否启用优惠码功�?
+	SettingKeyPasswordResetEnabled             = "password_reset_enabled"              // 是否启用忘记密码功能（需要先开启邮件验证）
+	SettingKeyFrontendURL                      = "frontend_url"                        // 前端基础URL，用于生成邮件中的重置密码链�?
+	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
+	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开�?
+	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100�?
+	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"       // 返利冻结期（小时�?=不冻结）
+	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"      // 返利有效期（天，0=永久�?
+	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"    // 单人返利上限�?=无上限）
+	SettingKeyRiskControlEnabled               = "risk_control_enabled"                // 是否启用风控中心入口与审计链�?
+	SettingKeyContentModerationConfig          = "content_moderation_config"           // 内容审计配置（JSON�?
+	SettingKeyLoginAgreementEnabled            = "login_agreement_enabled"             // 登录前是否要求同意条�?
+	SettingKeyLoginAgreementMode               = "login_agreement_mode"                // 条款确认展示模式：modal / checkbox
+	SettingKeyLoginAgreementUpdatedAt          = "login_agreement_updated_at"          // 条款更新日期（展示用�?
+	SettingKeyLoginAgreementDocuments          = "login_agreement_documents"           // 条款文档列表（JSON，Markdown 内容�?
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
 	SettingKeySMTPPort     = "smtp_port"      // SMTP端口
-	SettingKeySMTPUsername = "smtp_username"  // SMTP用户�?	SettingKeySMTPPassword = "smtp_password"  // SMTP密码（加密存储）
+	SettingKeySMTPUsername = "smtp_username"  // SMTP用户�?
+	SettingKeySMTPPassword = "smtp_password"  // SMTP密码（加密存储）
 	SettingKeySMTPFrom     = "smtp_from"      // 发件人地址
-	SettingKeySMTPFromName = "smtp_from_name" // 发件人名�?	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
+	SettingKeySMTPFromName = "smtp_from_name" // 发件人名�?
+	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证
 	SettingKeyTurnstileSiteKey   = "turnstile_site_key"   // Turnstile Site Key
 	SettingKeyTurnstileSecretKey = "turnstile_secret_key" // Turnstile Secret Key
 
-	// TOTP 双因素认证设�?	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能
+	// TOTP 双因素认证设�?
+	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能
 
 	// LinuxDo Connect OAuth 登录设置
 	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"
@@ -162,20 +193,28 @@ const (
 	// OEM设置
 	SettingKeySiteName                    = "site_name"                     // 网站名称
 	SettingKeySiteLogo                    = "site_logo"                     // 网站Logo (base64)
-	SettingKeySiteSubtitle                = "site_subtitle"                 // 网站副标�?	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
+	SettingKeySiteSubtitle                = "site_subtitle"                 // 网站副标�?
+	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
-	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支�?Markdown/HTML，或 URL 作为 iframe src�?	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导�?CCS 按钮
+	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支�?Markdown/HTML，或 URL 作为 iframe src�?
+	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导�?CCS 按钮
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
-	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作�?iframe src�?	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
-	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组�?	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组�?	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组�?
+	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作�?iframe src�?
+	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
+	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组�?
+	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组�?
+	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组�?
 	// 默认配置
 	SettingKeyDefaultConcurrency    = "default_concurrency"    // 新用户默认并发量
-	SettingKeyDefaultBalance        = "default_balance"        // 新用户默认余�?	SettingKeyDefaultSubscriptions  = "default_subscriptions"  // 新用户默认订阅列表（JSON�?	SettingKeyDefaultUserRPMLimit   = "default_user_rpm_limit" // 新用户默�?RPM 限制�? = 不限制）
+	SettingKeyDefaultBalance        = "default_balance"        // 新用户默认余�?
+	SettingKeyDefaultSubscriptions  = "default_subscriptions"  // 新用户默认订阅列表（JSON�?
+	SettingKeyDefaultUserRPMLimit   = "default_user_rpm_limit" // 新用户默�?RPM 限制�? = 不限制）
 	SettingKeyUsageWindowLimitUnits = "usage_window_limit_units"
 	SettingKeyUsageWeeklyLimitUnits = "usage_weekly_limit_units"
 
-	// 第三方认证来源默认授予配�?	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"
+	// 第三方认证来源默认授予配�?
+	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"
 	SettingKeyAuthSourceDefaultEmailConcurrency        = "auth_source_default_email_concurrency"
 	SettingKeyAuthSourceDefaultEmailSubscriptions      = "auth_source_default_email_subscriptions"
 	SettingKeyAuthSourceDefaultEmailGrantOnSignup      = "auth_source_default_email_grant_on_signup"
@@ -207,10 +246,11 @@ const (
 	SettingKeyAuthSourceDefaultGoogleGrantOnFirstBind  = "auth_source_default_google_grant_on_first_bind"
 	SettingKeyForceEmailOnThirdPartySignup             = "force_email_on_third_party_signup"
 
-	// 管理�?API Key
-	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理�?API Key（用于外部系统集成）
+	// 管理�?API Key
+	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理�?API Key（用于外部系统集成）
 
-	// Gemini 配额策略（JSON�?	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"
+	// Gemini 配额策略（JSON�?
+	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"
 
 	// Model fallback settings
 	SettingKeyEnableModelFallback      = "enable_model_fallback"
@@ -227,6 +267,9 @@ const (
 
 	// SettingKeyDev2ModelName is the model name exposed to dev2 via GET /internal/dev2/config.
 	SettingKeyDev2ModelName = "dev2_model_name"
+
+	// SettingKeyDev2EnvConfig stores newline-separated KEY=VALUE env entries exposed to dev2.
+	SettingKeyDev2EnvConfig = "dev2_env_config"
 
 	// =========================
 	// Ops Monitoring (vNext)
@@ -291,7 +334,7 @@ const (
 	SettingKeyStreamTimeoutSettings = "stream_timeout_settings"
 
 	// =========================
-	// Request Rectifier (请求整流�?
+	// Request Rectifier (请求整流�?
 	// =========================
 
 	// SettingKeyRectifierSettings stores JSON config for rectifier settings (thinking signature + budget).
@@ -314,28 +357,36 @@ const (
 	// Claude Code Version Check
 	// =========================
 
-	// SettingKeyMinClaudeCodeVersion 最�?Claude Code 版本号要�?(semver, �?"2.1.0"，空�?不检�?
+	// SettingKeyMinClaudeCodeVersion 最�?Claude Code 版本号要�?(semver, �?"2.1.0"，空�?不检�?
 	SettingKeyMinClaudeCodeVersion = "min_claude_code_version"
 
-	// SettingKeyMaxClaudeCodeVersion 最�?Claude Code 版本号限�?(semver, �?"3.0.0"，空�?不检�?
+	// SettingKeyMaxClaudeCodeVersion 最�?Claude Code 版本号限�?(semver, �?"3.0.0"，空�?不检�?
 	SettingKeyMaxClaudeCodeVersion = "max_claude_code_version"
 
-	// SettingKeyAllowUngroupedKeyScheduling 允许未分�?API Key 调度（默�?false：未分组 Key 返回 403�?	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
+	// SettingKeyAllowUngroupedKeyScheduling 允许未分�?API Key 调度（默�?false：未分组 Key 返回 403�?
+	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
 
 	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 
 	// Gateway Forwarding Behavior
-	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号�?X-Stainless-* 指纹头（默认 true�?	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
-	// SettingKeyEnableMetadataPassthrough 是否透传客户端原�?metadata.user_id（默�?false�?	SettingKeyEnableMetadataPassthrough = "enable_metadata_passthrough"
-	// SettingKeyEnableCCHSigning 是否�?billing header 中的 cch 进行 xxHash64 签名（默�?false�?	SettingKeyEnableCCHSigning = "enable_cch_signing"
-	// SettingKeyEnableAnthropicCacheTTL1hInjection 是否�?Anthropic OAuth/SetupToken 请求体注�?1h cache_control ttl（默�?false�?	SettingKeyEnableAnthropicCacheTTL1hInjection = "enable_anthropic_cache_ttl_1h_injection"
+	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号�?X-Stainless-* 指纹头（默认 true�?
+	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
+	// SettingKeyEnableMetadataPassthrough 是否透传客户端原�?metadata.user_id（默�?false�?
+	SettingKeyEnableMetadataPassthrough = "enable_metadata_passthrough"
+	// SettingKeyEnableCCHSigning 是否�?billing header 中的 cch 进行 xxHash64 签名（默�?false�?
+	SettingKeyEnableCCHSigning = "enable_cch_signing"
+	// SettingKeyEnableAnthropicCacheTTL1hInjection 是否�?Anthropic OAuth/SetupToken 请求体注�?1h cache_control ttl（默�?false�?
+	SettingKeyEnableAnthropicCacheTTL1hInjection = "enable_anthropic_cache_ttl_1h_injection"
 
 	// Balance Low Notification
-	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开�?	SettingKeyBalanceLowNotifyThreshold   = "balance_low_notify_threshold"    // 默认阈值（USD�?	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页�?URL
+	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开�?
+	SettingKeyBalanceLowNotifyThreshold   = "balance_low_notify_threshold"    // 默认阈值（USD�?
+	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页�?URL
 
 	// Account Quota Notification
-	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开�?	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组�?
+	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开�?
+	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组�?
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
 )

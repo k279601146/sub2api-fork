@@ -141,7 +141,8 @@ type dev2UsageAttribution struct {
 }
 
 type dev2ConfigResponse struct {
-	ModelName string `json:"model_name"`
+	ModelName string            `json:"model_name"`
+	Env       map[string]string `json:"env,omitempty"`
 }
 
 // RegisterDev2InternalRoutes exposes service-to-service endpoints used by dev2.
@@ -168,10 +169,48 @@ func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.
 
 func dev2Config(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		modelName := dev2ModelName(c, h, cfg)
 		response.Success(c, dev2ConfigResponse{
-			ModelName: dev2ModelName(c, h, cfg),
+			ModelName: modelName,
+			Env:       dev2EnvConfig(c, h, modelName),
 		})
 	}
+}
+
+func dev2EnvConfig(c *gin.Context, h *handler.Handlers, modelName string) map[string]string {
+	env := make(map[string]string)
+	if h != nil && h.Admin != nil && h.Admin.Setting != nil {
+		settings, err := h.Admin.Setting.GetAllSettings(c.Request.Context())
+		if err == nil && settings != nil {
+			for key, value := range parseDev2EnvConfig(settings.Dev2EnvConfig) {
+				env[key] = value
+			}
+		}
+	}
+	if strings.TrimSpace(modelName) != "" {
+		env["DEV2_DEFAULT_MODEL_ID"] = strings.TrimSpace(modelName)
+	}
+	return env
+}
+
+func parseDev2EnvConfig(raw string) map[string]string {
+	env := make(map[string]string)
+	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		eq := strings.Index(line, "=")
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		value := strings.TrimSpace(line[eq+1:])
+		if key != "" {
+			env[key] = value
+		}
+	}
+	return env
 }
 
 func dev2ModelName(c *gin.Context, h *handler.Handlers, cfg *config.Config) string {
