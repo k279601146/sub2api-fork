@@ -155,7 +155,7 @@ func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.
 	group := r.Group("/internal/dev2")
 	group.Use(dev2InternalAuthMiddleware(cfg))
 	{
-		group.GET("/config", dev2Config(cfg))
+		group.GET("/config", dev2Config(h, cfg))
 		group.POST("/users/sync", dev2SyncUser(h, cfg))
 		group.POST("/ide/auth/authorize", dev2AuthorizeIDE(h, cfg))
 		group.GET("/billing/usage", dev2BillingUsage(h, cfg))
@@ -166,25 +166,35 @@ func RegisterDev2InternalRoutes(r *gin.Engine, h *handler.Handlers, cfg *config.
 	}
 }
 
-func dev2Config(cfg *config.Config) gin.HandlerFunc {
+func dev2Config(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		response.Success(c, dev2ConfigResponse{
-			ModelName: dev2ModelName(cfg),
+			ModelName: dev2ModelName(c, h, cfg),
 		})
 	}
 }
 
-func dev2ModelName(cfg *config.Config) string {
-	modelName := strings.TrimSpace(os.Getenv("DEV2_MODEL_NAME"))
-	if cfg != nil {
-		if configured := strings.TrimSpace(cfg.Dev2.ModelName); configured != "" {
-			modelName = configured
+func dev2ModelName(c *gin.Context, h *handler.Handlers, cfg *config.Config) string {
+	// Priority 1: DB-backed setting (admin UI, no restart needed)
+	if h != nil && h.Admin != nil && h.Admin.Setting != nil {
+		settings, err := h.Admin.Setting.GetAllSettings(c.Request.Context())
+		if err == nil && settings != nil && strings.TrimSpace(settings.Dev2ModelName) != "" {
+			return strings.TrimSpace(settings.Dev2ModelName)
 		}
 	}
-	if modelName == "" {
-		modelName = strings.TrimSpace(viper.GetString("dev2.model_name"))
+	// Priority 2: Environment variable
+	modelName := strings.TrimSpace(os.Getenv("DEV2_MODEL_NAME"))
+	if modelName != "" {
+		return modelName
 	}
-	return modelName
+	// Priority 3: config.yaml
+	if cfg != nil {
+		if configured := strings.TrimSpace(cfg.Dev2.ModelName); configured != "" {
+			return configured
+		}
+	}
+	// Priority 4: Viper fallback
+	return strings.TrimSpace(viper.GetString("dev2.model_name"))
 }
 
 func dev2InternalAuthMiddleware(cfg *config.Config) gin.HandlerFunc {

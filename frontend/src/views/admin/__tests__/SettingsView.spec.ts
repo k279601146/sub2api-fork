@@ -389,6 +389,7 @@ const baseSettingsResponse = {
   fallback_model_openai: "",
   fallback_model_gemini: "",
   fallback_model_antigravity: "",
+  dev2_model_name: "",
   enable_identity_patch: false,
   identity_patch_prompt: "",
   ops_monitoring_enabled: false,

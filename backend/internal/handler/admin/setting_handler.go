@@ -1,7 +1,7 @@
 package admin
 
 import (
-	"crypto/rand"
+	"context"`r`n	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,7 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// semverPattern 预编译 semver 格式校验正则
+// semverPattern 预编�?semver 格式校验正则
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
@@ -52,8 +52,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// SettingHandler 系统设置处理器
-type SettingHandler struct {
+// SettingHandler 系统设置处理�?type SettingHandler struct {
 	settingService       *service.SettingService
 	emailService         *service.EmailService
 	turnstileService     *service.TurnstileService
@@ -62,8 +61,7 @@ type SettingHandler struct {
 	paymentService       *service.PaymentService
 }
 
-// NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
+// NewSettingHandler 创建系统设置处理�?func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
 	return &SettingHandler{
 		settingService:       settingService,
 		emailService:         emailService,
@@ -74,8 +72,13 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 	}
 }
 
-// GetSettings 获取所有系统设置
-// GET /api/v1/admin/settings
+
+// GetAllSettings returns all system settings without HTTP context.
+// Used by internal dev2 routes.
+func (h *SettingHandler) GetAllSettings(ctx context.Context) (*service.SystemSettings, error) {
+	return h.settingService.GetAllSettings(ctx)
+}
+// GetSettings 获取所有系统设�?// GET /api/v1/admin/settings
 func (h *SettingHandler) GetSettings(c *gin.Context) {
 	settings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -213,6 +216,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		FallbackModelOpenAI:                    settings.FallbackModelOpenAI,
 		FallbackModelGemini:                    settings.FallbackModelGemini,
 		FallbackModelAntigravity:               settings.FallbackModelAntigravity,
+		Dev2ModelName:                          settings.Dev2ModelName,
 		EnableIdentityPatch:                    settings.EnableIdentityPatch,
 		IdentityPatchPrompt:                    settings.IdentityPatchPrompt,
 		OpsMonitoringEnabled:                   opsEnabled && settings.OpsMonitoringEnabled,
@@ -291,11 +295,9 @@ func openaiFastPolicySettingsToDTO(s *service.OpenAIFastPolicySettings) *dto.Ope
 
 // openaiFastPolicySettingsFromDTO converts dto -> service for OpenAI fast policy.
 //
-// 规范化 ServiceTier：在 DTO 进入 service 层之前统一把空字符串归一为
-// service.OpenAIFastTierAny ("all")，避免管理员保存时空串与 "all" 同时
+// 规范�?ServiceTier：在 DTO 进入 service 层之前统一把空字符串归一�?// service.OpenAIFastTierAny ("all")，避免管理员保存时空串与 "all" 同时
 // 表达"匹配任意 tier"造成数据库取值的二义性。其它非空值原样透传，由
-// service.SetOpenAIFastPolicySettings 负责合法值校验。
-func openaiFastPolicySettingsFromDTO(s *dto.OpenAIFastPolicySettings) *service.OpenAIFastPolicySettings {
+// service.SetOpenAIFastPolicySettings 负责合法值校验�?func openaiFastPolicySettingsFromDTO(s *dto.OpenAIFastPolicySettings) *service.OpenAIFastPolicySettings {
 	if s == nil {
 		return nil
 	}
@@ -350,8 +352,7 @@ type UpdateSettingsRequest struct {
 	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认证
-	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
+	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认�?	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
 	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
@@ -494,6 +495,7 @@ type UpdateSettingsRequest struct {
 	FallbackModelOpenAI      string `json:"fallback_model_openai"`
 	FallbackModelGemini      string `json:"fallback_model_gemini"`
 	FallbackModelAntigravity string `json:"fallback_model_antigravity"`
+	Dev2ModelName string `json:"dev2_model_name"`
 
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
@@ -567,11 +569,10 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
-	// Affiliate (邀请返利) feature switch
+	// Affiliate (邀请返�? feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
-	// 风控中心功能开关
-	RiskControlEnabled *bool `json:"risk_control_enabled"`
+	// 风控中心功能开�?	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -649,8 +650,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if affiliateRebatePerInviteeCap < 0 {
 		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
 	}
-	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
-	if req.TableDefaultPageSize <= 0 {
+	// 通用表格配置：兼容旧客户端未传字段时保留当前值�?	if req.TableDefaultPageSize <= 0 {
 		req.TableDefaultPageSize = previousSettings.TableDefaultPageSize
 	}
 	if req.TablePageSizeOptions == nil {
@@ -670,7 +670,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.AuthSourceDefaultOIDCSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultOIDCSubscriptions)
 	req.AuthSourceDefaultWeChatSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeChatSubscriptions)
 
-	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
+	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已�?SMTP 配置
 	// 防止前端加载设置失败时空表单覆盖已保存的 SMTP 配置
 	if req.SMTPHost == "" && previousSettings.SMTPHost != "" {
 		req.SMTPHost = previousSettings.SMTPHost
@@ -683,12 +683,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	// Turnstile 参数验证
 	if req.TurnstileEnabled {
-		// 检查必填字段
-		if req.TurnstileSiteKey == "" {
+		// 检查必填字�?		if req.TurnstileSiteKey == "" {
 			response.BadRequest(c, "Turnstile Site Key is required when enabled")
 			return
 		}
-		// 如果未提供 secret key，使用已保存的值（留空保留当前值）
+		// 如果未提�?secret key，使用已保存的值（留空保留当前值）
 		if req.TurnstileSecretKey == "" {
 			if previousSettings.TurnstileSecretKey == "" {
 				response.BadRequest(c, "Turnstile Secret Key is required when enabled")
@@ -697,8 +696,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			req.TurnstileSecretKey = previousSettings.TurnstileSecretKey
 		}
 
-		// 当 site_key 或 secret_key 任一变化时验证（避免配置错误导致无法登录）
-		siteKeyChanged := previousSettings.TurnstileSiteKey != req.TurnstileSiteKey
+		// �?site_key �?secret_key 任一变化时验证（避免配置错误导致无法登录�?		siteKeyChanged := previousSettings.TurnstileSiteKey != req.TurnstileSiteKey
 		secretKeyChanged := previousSettings.TurnstileSecretKey != req.TurnstileSecretKey
 		if siteKeyChanged || secretKeyChanged {
 			if err := h.turnstileService.ValidateSecretKey(c.Request.Context(), req.TurnstileSecretKey); err != nil {
@@ -708,8 +706,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
-	// TOTP 双因素认证参数验证
-	// 只有手动配置了加密密钥才允许启用 TOTP 功能
+	// TOTP 双因素认证参数验�?	// 只有手动配置了加密密钥才允许启用 TOTP 功能
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
@@ -775,8 +772,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 
-		// 如果未提供 client_secret，则保留现有值（如有）。
-		if req.LinuxDoConnectClientSecret == "" {
+		// 如果未提�?client_secret，则保留现有值（如有）�?		if req.LinuxDoConnectClientSecret == "" {
 			if previousSettings.LinuxDoConnectClientSecret == "" {
 				response.BadRequest(c, "LinuxDo Client Secret is required when enabled")
 				return
@@ -1054,8 +1050,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
-	// “购买订阅”页面配置验证
-	purchaseEnabled := previousSettings.PurchaseSubscriptionEnabled
+	// “购买订阅”页面配置验�?	purchaseEnabled := previousSettings.PurchaseSubscriptionEnabled
 	if req.PurchaseSubscriptionEnabled != nil {
 		purchaseEnabled = *req.PurchaseSubscriptionEnabled
 	}
@@ -1064,8 +1059,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		purchaseURL = strings.TrimSpace(*req.PurchaseSubscriptionURL)
 	}
 
-	// - 启用时要求 URL 合法且非空
-	// - 禁用时允许为空；若提供了 URL 也做基本校验，避免误配置
+	// - 启用时要�?URL 合法且非�?	// - 禁用时允许为空；若提供了 URL 也做基本校验，避免误配置
 	if purchaseEnabled {
 		if purchaseURL == "" {
 			response.BadRequest(c, "Purchase Subscription URL is required when enabled")
@@ -1179,8 +1173,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		customMenuJSON = string(menuBytes)
 	}
 
-	// 自定义端点验证
-	const (
+	// 自定义端点验�?	const (
 		maxCustomEndpoints        = 10
 		maxEndpointNameLen        = 50
 		maxEndpointURLLen         = 2048
@@ -1247,16 +1240,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		})
 	}
 
-	// 验证最低版本号格式（空字符串=禁用，或合法 semver）
-	if req.MinClaudeCodeVersion != "" {
+	// 验证最低版本号格式（空字符�?禁用，或合法 semver�?	if req.MinClaudeCodeVersion != "" {
 		if !semverPattern.MatchString(req.MinClaudeCodeVersion) {
 			response.Error(c, http.StatusBadRequest, "min_claude_code_version must be empty or a valid semver (e.g. 2.1.63)")
 			return
 		}
 	}
 
-	// 验证最高版本号格式（空字符串=禁用，或合法 semver）
-	if req.MaxClaudeCodeVersion != "" {
+	// 验证最高版本号格式（空字符�?禁用，或合法 semver�?	if req.MaxClaudeCodeVersion != "" {
 		if !semverPattern.MatchString(req.MaxClaudeCodeVersion) {
 			response.Error(c, http.StatusBadRequest, "max_claude_code_version must be empty or a valid semver (e.g. 3.0.0)")
 			return
@@ -1375,6 +1366,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FallbackModelOpenAI:              req.FallbackModelOpenAI,
 		FallbackModelGemini:              req.FallbackModelGemini,
 		FallbackModelAntigravity:         req.FallbackModelAntigravity,
+		Dev2ModelName:                    req.Dev2ModelName,
 		EnableIdentityPatch:              req.EnableIdentityPatch,
 		IdentityPatchPrompt:              req.IdentityPatchPrompt,
 		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
@@ -1749,6 +1741,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FallbackModelOpenAI:                    updatedSettings.FallbackModelOpenAI,
 		FallbackModelGemini:                    updatedSettings.FallbackModelGemini,
 		FallbackModelAntigravity:               updatedSettings.FallbackModelAntigravity,
+		Dev2ModelName:                          updatedSettings.Dev2ModelName,
 		EnableIdentityPatch:                    updatedSettings.EnableIdentityPatch,
 		IdentityPatchPrompt:                    updatedSettings.IdentityPatchPrompt,
 		OpsMonitoringEnabled:                   updatedSettings.OpsMonitoringEnabled,
@@ -2497,8 +2490,7 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	response.Success(c, gin.H{"message": "SMTP connection successful"})
 }
 
-// SendTestEmailRequest 发送测试邮件请求
-type SendTestEmailRequest struct {
+// SendTestEmailRequest 发送测试邮件请�?type SendTestEmailRequest struct {
 	Email        string `json:"email" binding:"required,email"`
 	SMTPHost     string `json:"smtp_host"`
 	SMTPPort     int    `json:"smtp_port"`
@@ -2509,8 +2501,7 @@ type SendTestEmailRequest struct {
 	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 }
 
-// SendTestEmail 发送测试邮件
-// POST /api/v1/admin/settings/send-test-email
+// SendTestEmail 发送测试邮�?// POST /api/v1/admin/settings/send-test-email
 func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	var req SendTestEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2588,7 +2579,7 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
             <h1>` + siteName + `</h1>
         </div>
         <div class="content">
-            <div class="success">✓</div>
+            <div class="success">�?/div>
             <h2>Email Configuration Successful!</h2>
             <p>This is a test email to verify your SMTP settings are working correctly.</p>
         </div>
@@ -2608,8 +2599,7 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Test email sent successfully"})
 }
 
-// GetAdminAPIKey 获取管理员 API Key 状态
-// GET /api/v1/admin/settings/admin-api-key
+// GetAdminAPIKey 获取管理�?API Key 状�?// GET /api/v1/admin/settings/admin-api-key
 func (h *SettingHandler) GetAdminAPIKey(c *gin.Context) {
 	maskedKey, exists, err := h.settingService.GetAdminAPIKeyStatus(c.Request.Context())
 	if err != nil {
@@ -2623,7 +2613,7 @@ func (h *SettingHandler) GetAdminAPIKey(c *gin.Context) {
 	})
 }
 
-// RegenerateAdminAPIKey 生成/重新生成管理员 API Key
+// RegenerateAdminAPIKey 生成/重新生成管理�?API Key
 // POST /api/v1/admin/settings/admin-api-key/regenerate
 func (h *SettingHandler) RegenerateAdminAPIKey(c *gin.Context) {
 	key, err := h.settingService.GenerateAdminAPIKey(c.Request.Context())
@@ -2633,11 +2623,10 @@ func (h *SettingHandler) RegenerateAdminAPIKey(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"key": key, // 完整 key 只在生成时返回一次
-	})
+		"key": key, // 完整 key 只在生成时返回一�?	})
 }
 
-// DeleteAdminAPIKey 删除管理员 API Key
+// DeleteAdminAPIKey 删除管理�?API Key
 // DELETE /api/v1/admin/settings/admin-api-key
 func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
 	if err := h.settingService.DeleteAdminAPIKey(c.Request.Context()); err != nil {
@@ -2752,8 +2741,7 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 	})
 }
 
-// GetStreamTimeoutSettings 获取流超时处理配置
-// GET /api/v1/admin/settings/stream-timeout
+// GetStreamTimeoutSettings 获取流超时处理配�?// GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {
 	settings, err := h.settingService.GetStreamTimeoutSettings(c.Request.Context())
 	if err != nil {
@@ -2770,8 +2758,7 @@ func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {
 	})
 }
 
-// GetRectifierSettings 获取请求整流器配置
-// GET /api/v1/admin/settings/rectifier
+// GetRectifierSettings 获取请求整流器配�?// GET /api/v1/admin/settings/rectifier
 func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 	settings, err := h.settingService.GetRectifierSettings(c.Request.Context())
 	if err != nil {
@@ -2792,8 +2779,7 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 	})
 }
 
-// UpdateRectifierSettingsRequest 更新整流器配置请求
-type UpdateRectifierSettingsRequest struct {
+// UpdateRectifierSettingsRequest 更新整流器配置请�?type UpdateRectifierSettingsRequest struct {
 	Enabled                  bool     `json:"enabled"`
 	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
@@ -2801,8 +2787,7 @@ type UpdateRectifierSettingsRequest struct {
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 }
 
-// UpdateRectifierSettings 更新请求整流器配置
-// PUT /api/v1/admin/settings/rectifier
+// UpdateRectifierSettings 更新请求整流器配�?// PUT /api/v1/admin/settings/rectifier
 func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	var req UpdateRectifierSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2810,8 +2795,7 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		return
 	}
 
-	// 校验并清理自定义匹配关键词
-	const maxPatterns = 50
+	// 校验并清理自定义匹配关键�?	const maxPatterns = 50
 	const maxPatternLen = 500
 	if len(req.APIKeySignaturePatterns) > maxPatterns {
 		response.BadRequest(c, "Too many signature patterns (max 50)")
@@ -2918,8 +2902,7 @@ func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 	response.Success(c, dto.BetaPolicySettings{Rules: outRules})
 }
 
-// UpdateStreamTimeoutSettingsRequest 更新流超时配置请求
-type UpdateStreamTimeoutSettingsRequest struct {
+// UpdateStreamTimeoutSettingsRequest 更新流超时配置请�?type UpdateStreamTimeoutSettingsRequest struct {
 	Enabled                bool   `json:"enabled"`
 	Action                 string `json:"action"`
 	TempUnschedMinutes     int    `json:"temp_unsched_minutes"`
@@ -2927,8 +2910,7 @@ type UpdateStreamTimeoutSettingsRequest struct {
 	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
 }
 
-// UpdateStreamTimeoutSettings 更新流超时处理配置
-// PUT /api/v1/admin/settings/stream-timeout
+// UpdateStreamTimeoutSettings 更新流超时处理配�?// PUT /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	var req UpdateStreamTimeoutSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2999,8 +2981,7 @@ func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 	response.Success(c, service.PopulateWebSearchUsage(c.Request.Context(), updated))
 }
 
-// ResetWebSearchUsage 重置指定 provider 的配额用量
-// POST /api/v1/admin/settings/web-search-emulation/reset-usage
+// ResetWebSearchUsage 重置指定 provider 的配额用�?// POST /api/v1/admin/settings/web-search-emulation/reset-usage
 func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
 	var req struct {
 		ProviderType string `json:"provider_type"`
@@ -3031,7 +3012,7 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 		return
 	}
 	if strings.TrimSpace(req.Query) == "" {
-		req.Query = "搜索今年世界大事件"
+		req.Query = "搜索今年世界大事�?
 	}
 
 	result, err := service.TestWebSearch(c.Request.Context(), req.Query)

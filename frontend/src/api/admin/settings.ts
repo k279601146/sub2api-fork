@@ -457,6 +457,9 @@ export interface SystemSettings {
   fallback_model_gemini: string;
   fallback_model_antigravity: string;
 
+  // Dev2 model name
+  dev2_model_name: string;
+
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean;
   identity_patch_prompt: string;
@@ -664,6 +667,7 @@ export interface UpdateSettingsRequest {
   fallback_model_openai?: string;
   fallback_model_gemini?: string;
   fallback_model_antigravity?: string;
+  dev2_model_name?: string;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
   ops_monitoring_enabled?: boolean;

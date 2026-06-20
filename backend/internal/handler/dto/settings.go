@@ -32,9 +32,7 @@ type SystemSettings struct {
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	FrontendURL                      string                   `json:"frontend_url"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
+	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认�?	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配�?	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
@@ -140,6 +138,9 @@ type SystemSettings struct {
 	FallbackModelGemini      string `json:"fallback_model_gemini"`
 	FallbackModelAntigravity string `json:"fallback_model_antigravity"`
 
+	// Dev2 model name
+	Dev2ModelName string `json:"dev2_model_name"`
+
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
@@ -215,10 +216,9 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	// 风控中心功能开关
-	RiskControlEnabled bool `json:"risk_control_enabled"`
+	// 风控中心功能开�?	RiskControlEnabled bool `json:"risk_control_enabled"`
 
-	// Affiliate (邀请返利) feature switch
+	// Affiliate (邀请返�? feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	// OpenAI fast/flex policy
@@ -238,8 +238,7 @@ type PublicSettings struct {
 	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                     `json:"totp_enabled"` // TOTP 双因素认证
-	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
+	TotpEnabled                      bool                     `json:"totp_enabled"` // TOTP 双因素认�?	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
 	LoginAgreementRevision           string                   `json:"login_agreement_revision"`
@@ -306,7 +305,7 @@ type RateLimit429CooldownSettings struct {
 	CooldownSeconds int  `json:"cooldown_seconds"`
 }
 
-// StreamTimeoutSettings 流超时处理配置 DTO
+// StreamTimeoutSettings 流超时处理配�?DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`
 	Action                 string `json:"action"`
@@ -315,7 +314,7 @@ type StreamTimeoutSettings struct {
 	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
 }
 
-// RectifierSettings 请求整流器配置 DTO
+// RectifierSettings 请求整流器配�?DTO
 type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`
 	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
