@@ -5192,6 +5192,7 @@ export default {
         contentSafety: 'Content Safety',
         security: 'Security',
         users: 'Users',
+        dev2: 'Dev2',
         gateway: 'Gateway',
         email: 'Email',
         backup: 'Backup',
@@ -5419,8 +5420,25 @@ export default {
         modelNamePlaceholder: 'e.g. gpt-5.5',
         modelNameHint: 'Exposed as model_name and DEV2_DEFAULT_MODEL_ID for dev2. Leave empty to use the dev2 local model config.',
         envConfig: 'Environment Config',
-        envConfigPlaceholder: 'KEY=value\\nOPENAI_BASE_URL=http://localhost:3000/v1\\nOPENAI_API_KEY=sk-...',
-        envConfigHint: 'One KEY=value per line. Blank lines and comments are ignored. Values are returned only to the authenticated internal dev2 endpoint.'
+        envConfigHint: 'Values are saved into dev2_env_config and returned only to the authenticated internal dev2 endpoint.',
+        extraConfig: 'Extra Config',
+        addExtraConfig: 'Add Config',
+        noExtraConfig: 'No extra config entries.',
+        extraKeyPlaceholder: 'Variable name',
+        extraValuePlaceholder: 'Variable value',
+        groups: {
+          bootstrap: 'Local Bootstrap & Connectivity',
+          model: 'Models & Generation',
+          billing: 'Billing & Quotas',
+          media: 'Media Generation',
+          tools: 'Tools & Sandboxes',
+          email: 'Email & Verification',
+          externalChannels: 'External Chat Channels',
+          pipedream: 'Pipedream Connectors',
+          openviking: 'OpenViking & Memory',
+          referrals: 'Referrals',
+          runtime: 'Runtime'
+        }
       },
       claudeCode: {
         title: 'Claude Code Settings',

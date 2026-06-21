@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="mx-auto max-w-6xl space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <div
@@ -3256,20 +3256,17 @@
         </div>
         <!-- /Tab: Users -->
 
-        <!-- Tab: Gateway — Claude Code, Scheduling -->
-        <div v-show="activeTab === 'gateway'" class="space-y-6">
-          <div class="card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.dev2.title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.dev2.description") }}
-              </p>
-            </div>
-            <div class="space-y-5 p-6">
+        <!-- Tab: Dev2 -->
+        <div v-show="activeTab === 'dev2'" class="space-y-6">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t("admin.settings.dev2.title") }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t("admin.settings.dev2.description") }}
+            </p>
+          </div>
+          <div class="space-y-5">
               <div>
                 <label
                   class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -3292,19 +3289,105 @@
                 >
                   {{ t("admin.settings.dev2.envConfig") }}
                 </label>
-                <textarea
-                  v-model="form.dev2_env_config"
-                  rows="14"
-                  class="input min-h-72 font-mono text-xs leading-5"
-                  spellcheck="false"
-                  :placeholder="t('admin.settings.dev2.envConfigPlaceholder')"
-                />
+                <div class="space-y-5">
+                  <div
+                    v-for="group in dev2EnvGroups"
+                    :key="group.key"
+                    class="space-y-3"
+                  >
+                    <h3
+                      class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t(group.titleKey) }}
+                    </h3>
+                    <div class="grid gap-4 md:grid-cols-2">
+                      <div
+                        v-for="field in group.fields"
+                        :key="field.key"
+                      >
+                        <label
+                          class="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ field.key }}
+                        </label>
+                        <input
+                          v-model="dev2EnvValues[field.key]"
+                          :type="field.secret ? 'password' : field.inputType || 'text'"
+                          class="input w-full font-mono text-sm"
+                          :placeholder="field.placeholder"
+                          autocomplete="off"
+                          spellcheck="false"
+                        />
+                        <p
+                          v-if="field.hintKey"
+                          class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+                        >
+                          {{ t(field.hintKey) }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <h3
+                        class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+                      >
+                        {{ t("admin.settings.dev2.extraConfig") }}
+                      </h3>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm"
+                        @click="addDev2ExtraEnv"
+                      >
+                        {{ t("admin.settings.dev2.addExtraConfig") }}
+                      </button>
+                    </div>
+                    <div
+                      v-if="dev2ExtraEnvEntries.length === 0"
+                      class="rounded-lg border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-400 dark:border-dark-600"
+                    >
+                      {{ t("admin.settings.dev2.noExtraConfig") }}
+                    </div>
+                    <div
+                      v-for="(entry, index) in dev2ExtraEnvEntries"
+                      :key="index"
+                      class="grid gap-3 md:grid-cols-[minmax(180px,0.42fr)_minmax(220px,1fr)_auto]"
+                    >
+                      <input
+                        v-model="entry.key"
+                        type="text"
+                        class="input w-full font-mono text-sm"
+                        :placeholder="t('admin.settings.dev2.extraKeyPlaceholder')"
+                        spellcheck="false"
+                      />
+                      <input
+                        v-model="entry.value"
+                        type="text"
+                        class="input w-full font-mono text-sm"
+                        :placeholder="t('admin.settings.dev2.extraValuePlaceholder')"
+                        spellcheck="false"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm"
+                        @click="removeDev2ExtraEnv(index)"
+                      >
+                        {{ t("common.delete") }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.dev2.envConfigHint") }}
                 </p>
               </div>
-            </div>
           </div>
+        </div>
+        <!-- /Tab: Dev2 -->
+
+        <!-- Tab: Gateway — Claude Code, Scheduling -->
+        <div v-show="activeTab === 'gateway'" class="space-y-6">
           <!-- Claude Code Settings -->
           <div class="card">
             <div
@@ -6381,6 +6464,7 @@ type SettingsTab =
   | "contentSafety"
   | "security"
   | "users"
+  | "dev2"
   | "gateway"
   | "payment"
   | "email"
@@ -6392,6 +6476,7 @@ const settingsTabs = [
   { key: "contentSafety" as SettingsTab, icon: "shield" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
+  { key: "dev2" as SettingsTab, icon: "terminal" as const },
   { key: "gateway" as SettingsTab, icon: "server" as const },
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
@@ -6786,6 +6871,266 @@ const form = reactive<SettingsForm>({
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
 });
+
+interface Dev2EnvField {
+  key: string;
+  placeholder?: string;
+  inputType?: string;
+  secret?: boolean;
+  hintKey?: string;
+}
+
+interface Dev2EnvGroup {
+  key: string;
+  titleKey: string;
+  fields: Dev2EnvField[];
+}
+
+interface Dev2ExtraEnvEntry {
+  key: string;
+  value: string;
+}
+
+const dev2EnvGroups: Dev2EnvGroup[] = [
+  {
+    key: "bootstrap",
+    titleKey: "admin.settings.dev2.groups.bootstrap",
+    fields: [
+      { key: "DATABASE_URL", placeholder: "postgresql+psycopg2://postgres:password@localhost:5432/openharness_saas" },
+      { key: "CELERY_BROKER_URL", placeholder: "redis://localhost:6379/1" },
+      { key: "CELERY_RESULT_BACKEND", placeholder: "redis://localhost:6379/2" },
+      { key: "REDIS_URL", placeholder: "redis://localhost:6379/1" },
+      { key: "JWT_SECRET_KEY", placeholder: "secret", secret: true },
+      { key: "JWT_ALGORITHM", placeholder: "HS256" },
+      { key: "JWT_EXPIRE_MINUTES", placeholder: "10080", inputType: "number" },
+      { key: "SUB2API_INTERNAL_BASE_URL", placeholder: "http://localhost:8080" },
+      { key: "SUB2API_INTERNAL_SECRET", placeholder: "secret", secret: true },
+      { key: "SUB2API_INTERNAL_TIMEOUT_SECONDS", placeholder: "8", inputType: "number" },
+      { key: "LOG_LEVEL", placeholder: "INFO" },
+      { key: "LOG_FILE", placeholder: "./logs/openharness.log" },
+      { key: "OPENVIKING_CONFIG_FILE", placeholder: "ov.conf" },
+    ],
+  },
+  {
+    key: "model",
+    titleKey: "admin.settings.dev2.groups.model",
+    fields: [
+      { key: "OPENAI_BASE_URL", placeholder: "https://ark.cn-beijing.volces.com/api/v3" },
+      { key: "OPENAI_API_KEY", placeholder: "sk-...", secret: true },
+      { key: "ARK_API_KEY", placeholder: "your_ark_api_key", secret: true },
+      { key: "DEFAULT_MODEL", placeholder: "gpt-5.5" },
+      { key: "MEMORY_MODEL_ID", placeholder: "gpt-5.5" },
+      { key: "TITLE_GENERATION_MODEL", placeholder: "gpt-5.5" },
+      { key: "OPENHARNESS_MAX_TOKENS", placeholder: "65536", inputType: "number" },
+      { key: "OPENHARNESS_MAX_TURNS", placeholder: "100", inputType: "number" },
+      { key: "OPENHARNESS_AGENT_EFFORT", placeholder: "low" },
+      { key: "OPENHARNESS_AGENT_MAX_TOKENS", placeholder: "4096", inputType: "number" },
+      { key: "TITLE_GENERATION_DELAY_SECONDS", placeholder: "3", inputType: "number" },
+      { key: "CONNECTOR_APPROVAL_TIMEOUT_SECONDS", placeholder: "300", inputType: "number" },
+    ],
+  },
+  {
+    key: "billing",
+    titleKey: "admin.settings.dev2.groups.billing",
+    fields: [
+      { key: "BILLING_BASE_WINDOW_LIMIT", placeholder: "100", inputType: "number" },
+      { key: "BILLING_BASE_WEEKLY_LIMIT", placeholder: "700", inputType: "number" },
+      { key: "BILLING_TURN_RESERVE_UNITS", placeholder: "8", inputType: "number" },
+      { key: "BILLING_CREDITS_PER_USD", placeholder: "25", inputType: "number" },
+      { key: "BILLING_WEB_TOOL_UNITS", placeholder: "0.25", inputType: "number" },
+      { key: "BILLING_IMAGE_TOOL_UNITS", placeholder: "3", inputType: "number" },
+      { key: "BILLING_VIDEO_TOOL_UNITS", placeholder: "20", inputType: "number" },
+      { key: "BILLING_MUSIC_TOOL_UNITS", placeholder: "5", inputType: "number" },
+    ],
+  },
+  {
+    key: "media",
+    titleKey: "admin.settings.dev2.groups.media",
+    fields: [
+      { key: "MOCK_MEDIA", placeholder: "false" },
+      { key: "IMAGE_GEN_API_KEY", placeholder: "sk-...", secret: true },
+      { key: "IMAGE_GEN_BASE_URL", placeholder: "https://api.siliconflow.cn" },
+      { key: "GPT_IMAGEGEN_API_KEY", placeholder: "sk-...", secret: true },
+      { key: "GPT_IMAGEGEN_BASE_URL", placeholder: "http://localhost:3000/v1" },
+      { key: "VIDEO_GEN_API_KEY", placeholder: "your_video_api_key_here", secret: true },
+      { key: "VIDEO_GEN_BASE_URL", placeholder: "https://api.packyapi.com/v1beta" },
+    ],
+  },
+  {
+    key: "tools",
+    titleKey: "admin.settings.dev2.groups.tools",
+    fields: [
+      { key: "ENABLE_BASH_TOOLS", placeholder: "true" },
+      { key: "TAVILY_API_KEY", placeholder: "tvly-...", secret: true },
+      { key: "E2B_API_KEY", placeholder: "e2b_...", secret: true },
+      { key: "E2B_TEMPLATE_ID", placeholder: "code-interpreter-v1" },
+      { key: "ALIPAY_APP_ID", placeholder: "2021" },
+    ],
+  },
+  {
+    key: "email",
+    titleKey: "admin.settings.dev2.groups.email",
+    fields: [
+      { key: "EMAIL_VERIFICATION_DELIVERY_MODE", placeholder: "smtp" },
+      { key: "EMAIL_VERIFICATION_SMTP_HOST", placeholder: "smtp.gmail.com" },
+      { key: "EMAIL_VERIFICATION_SMTP_PORT", placeholder: "587", inputType: "number" },
+      { key: "EMAIL_VERIFICATION_SMTP_USER", placeholder: "user@example.com" },
+      { key: "EMAIL_VERIFICATION_SMTP_PASSWORD", placeholder: "password", secret: true },
+      { key: "EMAIL_VERIFICATION_EMAIL_FROM", placeholder: "noreply@example.com" },
+      { key: "EMAIL_VERIFICATION_FROM_NAME", placeholder: "Bahew" },
+      { key: "EMAIL_VERIFICATION_SUBJECT", placeholder: "Bahew 注册验证码" },
+      { key: "EMAIL_VERIFICATION_SMTP_SSL", placeholder: "0" },
+      { key: "EMAIL_VERIFICATION_SMTP_STARTTLS", placeholder: "1" },
+      { key: "EMAIL_VERIFICATION_CODE_TTL_MINUTES", placeholder: "10", inputType: "number" },
+      { key: "EMAIL_VERIFICATION_RESEND_SECONDS", placeholder: "60", inputType: "number" },
+      { key: "EMAIL_VERIFICATION_MAX_ATTEMPTS", placeholder: "5", inputType: "number" },
+      { key: "EMAIL_VERIFICATION_SMTP_TIMEOUT_SECONDS", placeholder: "5", inputType: "number" },
+      { key: "SMTP_HOST", placeholder: "smtp.gmail.com" },
+      { key: "SMTP_PORT", placeholder: "587", inputType: "number" },
+      { key: "SMTP_USER", placeholder: "user@example.com" },
+      { key: "SMTP_PASSWORD", placeholder: "password", secret: true },
+      { key: "SMTP_STARTTLS", placeholder: "1" },
+    ],
+  },
+  {
+    key: "externalChannels",
+    titleKey: "admin.settings.dev2.groups.externalChannels",
+    fields: [
+      { key: "EXTERNAL_CHANNEL_GATEWAY_ENABLED", placeholder: "false" },
+      { key: "EXTERNAL_CHANNEL_REPLY_TIMEOUT_SECONDS", placeholder: "600", inputType: "number" },
+      { key: "EXTERNAL_CHANNEL_PUBLIC_BASE_URL", placeholder: "https://api.example.com" },
+      { key: "EXTERNAL_CHANNEL_GATEWAY_LOG_LEVEL", placeholder: "INFO" },
+      { key: "EXTERNAL_CHANNEL_SEND_PROGRESS", placeholder: "false" },
+      { key: "FEISHU_APP_ID", placeholder: "cli_..." },
+      { key: "FEISHU_APP_SECRET", placeholder: "secret", secret: true },
+      { key: "FEISHU_ENCRYPT_KEY", placeholder: "encrypt_key", secret: true },
+      { key: "FEISHU_VERIFICATION_TOKEN", placeholder: "verification_token", secret: true },
+      { key: "FEISHU_BOT_OPEN_ID", placeholder: "ou_..." },
+      { key: "FEISHU_BOT_NAMES", placeholder: "ohmo,openclaw,openharness" },
+      { key: "FEISHU_GROUP_POLICY", placeholder: "managed_or_mention" },
+      { key: "FEISHU_REACT_EMOJI", placeholder: "OK" },
+      { key: "QQ_APP_ID", placeholder: "1904141741" },
+      { key: "QQ_APP_SECRET", placeholder: "secret", secret: true },
+    ],
+  },
+  {
+    key: "pipedream",
+    titleKey: "admin.settings.dev2.groups.pipedream",
+    fields: [
+      { key: "PIPEDREAM_CLIENT_ID", placeholder: "client_id" },
+      { key: "PIPEDREAM_CLIENT_SECRET", placeholder: "client_secret", secret: true },
+      { key: "PIPEDREAM_PROJECT_ID", placeholder: "project_id" },
+      { key: "PIPEDREAM_ENVIRONMENT", placeholder: "development" },
+      { key: "PIPEDREAM_ALLOWED_ORIGINS", placeholder: "[\"http://localhost:3001\"]" },
+      { key: "PIPEDREAM_WEBHOOK_SECRET", placeholder: "webhook_secret", secret: true },
+      { key: "PIPEDREAM_API_BASE_URL", placeholder: "https://api.pipedream.com/v1" },
+      { key: "PIPEDREAM_MCP_BASE_URL", placeholder: "https://remote.mcp.pipedream.net/v3" },
+    ],
+  },
+  {
+    key: "openviking",
+    titleKey: "admin.settings.dev2.groups.openviking",
+    fields: [
+      { key: "OPENVIKING_URL", placeholder: "http://localhost:1933" },
+      { key: "OPENVIKING_API_KEY", placeholder: "api_key", secret: true },
+      { key: "OPENVIKING_READY_TIMEOUT", placeholder: "10", inputType: "number" },
+      { key: "OPENVIKING_REGISTER_SKILLS_ON_STARTUP", placeholder: "true" },
+      { key: "OPENVIKING_REGISTER_SKILLS_STARTUP_DELAY_SECONDS", placeholder: "8", inputType: "number" },
+      { key: "OPENVIKING_REGISTER_SKILLS_WAIT", placeholder: "true" },
+      { key: "OPENVIKING_REGISTER_SKILLS_TIMEOUT", placeholder: "60", inputType: "number" },
+      { key: "OPENVIKING_AGENT_BOOTSTRAP_USER", placeholder: "0" },
+      { key: "OPENVIKING_REGISTER_SKILLS_DURING_TURN", placeholder: "false" },
+      { key: "OPENVIKING_FORCE_REGISTER_SKILLS", placeholder: "false" },
+      { key: "OPENVIKING_SKILL_REGISTRATION_STATE", placeholder: "temp_workspaces/.openviking_agent_skills.json" },
+      { key: "OPENHARNESS_AUTO_RECALL", placeholder: "true" },
+      { key: "OPENHARNESS_RECALL_LIMIT", placeholder: "6", inputType: "number" },
+      { key: "OPENHARNESS_RECALL_SCORE_THRESHOLD", placeholder: "0.15", inputType: "number" },
+      { key: "OPENHARNESS_RECALL_MAX_INJECTED_CHARS", placeholder: "4000", inputType: "number" },
+      { key: "OPENHARNESS_RECALL_PREFER_ABSTRACT", placeholder: "false" },
+      { key: "OPENHARNESS_VIKING_SYNC_DRAIN_TIMEOUT", placeholder: "8.0", inputType: "number" },
+      { key: "OPENHARNESS_VIKING_COMMIT_TIMEOUT", placeholder: "15.0", inputType: "number" },
+      { key: "OPENHARNESS_VIKING_PROCESS_TIMEOUT", placeholder: "5.0", inputType: "number" },
+      { key: "OPENHARNESS_VIKING_ENSURE_TIMEOUT", placeholder: "0.20", inputType: "number" },
+      { key: "OPENHARNESS_VIKING_CONTEXT_TIMEOUT", placeholder: "0.25", inputType: "number" },
+      { key: "OPENHARNESS_VIKING_AUTORECALL_TIMEOUT", placeholder: "0.75", inputType: "number" },
+    ],
+  },
+  {
+    key: "referrals",
+    titleKey: "admin.settings.dev2.groups.referrals",
+    fields: [
+      { key: "PUBLIC_WEB_BASE_URL", placeholder: "http://localhost:3001" },
+      { key: "REFERRAL_HASH_SECRET", placeholder: "secret", secret: true },
+      { key: "REFERRAL_REWARD_CREDITS", placeholder: "500", inputType: "number" },
+      { key: "REFERRAL_QUALIFY_MIN_UNITS", placeholder: "8", inputType: "number" },
+      { key: "REFERRAL_DAILY_REWARD_LIMIT", placeholder: "10", inputType: "number" },
+      { key: "REFERRAL_TOTAL_REWARD_LIMIT", placeholder: "100", inputType: "number" },
+      { key: "REFERRAL_EMAIL_DAILY_LIMIT", placeholder: "20", inputType: "number" },
+      { key: "REFERRAL_EMAIL_FROM", placeholder: "noreply@bahew.local" },
+    ],
+  },
+];
+
+const dev2ManagedEnvKeys = new Set(
+  dev2EnvGroups.flatMap((group) => group.fields.map((field) => field.key)),
+);
+const dev2EnvValues = reactive<Record<string, string>>(
+  Object.fromEntries([...dev2ManagedEnvKeys].map((key) => [key, ""])),
+);
+const dev2ExtraEnvEntries = reactive<Dev2ExtraEnvEntry[]>([]);
+
+function parseDev2EnvConfig(raw: string): Record<string, string> {
+  const parsed: Record<string, string> = {};
+  raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .forEach((line) => {
+      const separator = line.indexOf("=");
+      if (separator <= 0) return;
+      const key = line.slice(0, separator).trim();
+      const value = line.slice(separator + 1).trim();
+      if (key) parsed[key] = value;
+    });
+  return parsed;
+}
+
+function syncDev2EnvFields(raw: string) {
+  const parsed = parseDev2EnvConfig(raw);
+  for (const key of dev2ManagedEnvKeys) {
+    dev2EnvValues[key] = parsed[key] || "";
+  }
+  dev2ExtraEnvEntries.splice(0, dev2ExtraEnvEntries.length);
+  Object.entries(parsed).forEach(([key, value]) => {
+    if (!dev2ManagedEnvKeys.has(key) && key !== "DEV2_DEFAULT_MODEL_ID") {
+      dev2ExtraEnvEntries.push({ key, value });
+    }
+  });
+}
+
+function buildDev2EnvConfig(): string {
+  const lines: string[] = [];
+  for (const group of dev2EnvGroups) {
+    for (const field of group.fields) {
+      const value = (dev2EnvValues[field.key] || "").trim();
+      if (value) lines.push(`${field.key}=${value}`);
+    }
+  }
+  for (const entry of dev2ExtraEnvEntries) {
+    const key = entry.key.trim();
+    const value = entry.value.trim();
+    if (key && value) lines.push(`${key}=${value}`);
+  }
+  return lines.join("\n");
+}
+
+function addDev2ExtraEnv() {
+  dev2ExtraEnvEntries.push({ key: "", value: "" });
+}
+
+function removeDev2ExtraEnv(index: number) {
+  dev2ExtraEnvEntries.splice(index, 1);
+}
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
@@ -7411,6 +7756,7 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.dev2_env_config = settings.dev2_env_config || "";
+    syncDev2EnvFields(form.dev2_env_config);
     form.linuxdo_connect_client_secret = "";
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";
@@ -7708,6 +8054,8 @@ async function saveSettings() {
       form.wechat_connect_mode,
     );
 
+    form.dev2_env_config = buildDev2EnvConfig();
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -7953,6 +8301,7 @@ async function saveSettings() {
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.dev2_env_config = updated.dev2_env_config || "";
+    syncDev2EnvFields(form.dev2_env_config);
     form.linuxdo_connect_client_secret = "";
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";

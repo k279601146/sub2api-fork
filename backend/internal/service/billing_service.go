@@ -220,6 +220,14 @@ func (s *BillingService) initFallbackPricing() {
 	// GPT-5.5 暂无独立定价，回退到 GPT-5.4
 	s.fallbackPrices["gpt-5.5"] = s.fallbackPrices["gpt-5.4"]
 
+	// Zhipu GLM-5.2（官方公开价格）
+	s.fallbackPrices["glm-5.2"] = &ModelPricing{
+		InputPricePerToken:     1.4e-6,  // $1.40 per MTok
+		OutputPricePerToken:    4.4e-6,  // $4.40 per MTok
+		CacheReadPricePerToken: 0.26e-6, // $0.26 per MTok
+		SupportsCacheBreakdown: false,
+	}
+
 	s.fallbackPrices["gpt-5.4-mini"] = &ModelPricing{
 		InputPricePerToken:     7.5e-7,
 		OutputPricePerToken:    4.5e-6,
@@ -291,6 +299,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
+	}
+	if modelLower == "glm-5.2" || strings.HasPrefix(modelLower, "glm-5.2[") {
+		return s.fallbackPrices["glm-5.2"]
 	}
 
 	// OpenAI 仅匹配已知 GPT-5/Codex 族，避免未知 OpenAI 型号误计价。

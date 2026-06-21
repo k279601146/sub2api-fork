@@ -114,6 +114,30 @@ func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
 	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
 }
 
+func TestGetModelPricing_GLM52Fallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("glm-5.2")
+	require.NoError(t, err)
+	require.InDelta(t, 1.4e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 4.4e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.26e-6, pricing.CacheReadPricePerToken, 1e-12)
+
+	aliasPricing, err := svc.GetModelPricing("glm-5.2[1m]")
+	require.NoError(t, err)
+	require.Equal(t, pricing, aliasPricing)
+
+	cost, err := svc.CalculateCost("glm-5.2", UsageTokens{
+		InputTokens:     1000,
+		OutputTokens:    500,
+		CacheReadTokens: 2000,
+	}, 1.0)
+	require.NoError(t, err)
+	require.InDelta(t, 0.0014, cost.InputCost, 1e-12)
+	require.InDelta(t, 0.0022, cost.OutputCost, 1e-12)
+	require.InDelta(t, 0.00052, cost.CacheReadCost, 1e-12)
+}
+
 func TestGetModelPricing_UnknownOpenAIModelReturnsError(t *testing.T) {
 	svc := newTestBillingService()
 

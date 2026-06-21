@@ -2158,16 +2158,7 @@ export default {
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
       },
-      dev2: {
-        title: 'Dev2 配置',
-        description: '配置通过内部配置接口下发给 dev2 服务的运行环境',
-        modelName: '默认模型名称',
-        modelNamePlaceholder: '例如 gpt-5.5',
-        modelNameHint: '会作为 model_name 和 DEV2_DEFAULT_MODEL_ID 下发给 dev2；留空则使用 dev2 本地模型配置。',
-        envConfig: '环境变量配置',
-        envConfigPlaceholder: 'KEY=value\nOPENAI_BASE_URL=http://localhost:3000/v1\nOPENAI_API_KEY=sk-...',
-        envConfigHint: '每行一个 KEY=value。空行和注释会被忽略；这些值只会返回给通过内部密钥认证的 dev2 接口。'
-      },      claudeCode: {
+      claudeCode: {
         title: 'Claude Code 客户端限制',
         tooltip:
           '启用后，此分组仅允许 Claude Code 官方客户端访问。非 Claude Code 请求将被拒绝或降级到指定分组。',
@@ -5364,6 +5355,7 @@ export default {
         contentSafety: '内容安全',
         security: '安全与认证',
         users: '用户默认值',
+        dev2: 'Dev2 配置',
         gateway: '网关服务',
         email: '邮件设置',
         backup: '数据备份',
@@ -5581,6 +5573,33 @@ export default {
         defaultSubscriptionsDuplicate: '默认订阅存在重复分组：{groupId}。每个分组只能出现一次。',
         subscriptionGroup: '订阅分组',
         subscriptionValidityDays: '有效期（天）'
+      },
+      dev2: {
+        title: 'Dev2 配置',
+        description: '配置通过内部配置接口下发给 dev2 服务的运行环境',
+        modelName: '默认模型名称',
+        modelNamePlaceholder: '例如 gpt-5.5',
+        modelNameHint: '会作为 model_name 和 DEV2_DEFAULT_MODEL_ID 下发给 dev2；留空则使用 dev2 本地模型配置。',
+        envConfig: '环境变量配置',
+        envConfigHint: '按字段填写后会保存为 dev2_env_config，并只返回给通过内部密钥认证的 dev2 接口。',
+        extraConfig: '额外配置',
+        addExtraConfig: '添加配置项',
+        noExtraConfig: '暂无额外配置项',
+        extraKeyPlaceholder: '变量名',
+        extraValuePlaceholder: '变量值',
+        groups: {
+          bootstrap: '本地启动与连接',
+          model: '模型与生成',
+          billing: '计费与额度',
+          media: '媒体生成',
+          tools: '工具与沙箱',
+          email: '邮箱与验证码',
+          externalChannels: '外部聊天渠道',
+          pipedream: 'Pipedream 连接器',
+          openviking: 'OpenViking 与记忆',
+          referrals: '邀请返利',
+          runtime: '运行时'
+        }
       },
       claudeCode: {
         title: 'Claude Code 设置',
