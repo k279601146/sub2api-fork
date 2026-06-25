@@ -10,7 +10,7 @@ BACKUP_DIR="/www/backup/sub2api"
 
 # 从部署目录的 .env 文件加载私有变量（如 GITHUB_TOKEN）
 if [ -f "$DEPLOY_DIR/.env" ]; then
-  # 只导出需要的变量
+  # 只导出需要的变量1
   export $(grep -E "^(GITHUB_TOKEN|BRANCH)=" "$DEPLOY_DIR/.env" | xargs)
 fi
 
