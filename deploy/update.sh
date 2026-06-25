@@ -67,10 +67,12 @@ else
 fi
 
 echo "=== [4/5] 现场构建新版本 Docker 镜像 ==="
+echo "当前 Docker Compose 数据库连接配置："
+docker compose config | grep -E "DATABASE_(HOST|PORT|USER|DBNAME|SSLMODE):" || true
 docker compose build sub2api
 
 echo "=== [5/5] 重启并运行新容器 ==="
-docker compose up -d sub2api
+docker compose up -d --force-recreate sub2api
 
 echo "=== 更新完成，进行健康检查 ==="
 sleep 3
