@@ -5,7 +5,7 @@
 set -e
 
 SRC_DIR="/www/wwwroot/sub2api-fork"
-DEPLOY_DIR="/www/wwwroot/sub2api-deploy"
+DEPLOY_DIR="/www/wwwroot/sub2api-deploy/deploy"
 BACKUP_DIR="/www/backup/sub2api"
 
 # 从部署目录的 .env 文件加载私有变量（如 GITHUB_TOKEN）
@@ -25,11 +25,12 @@ fi
 # 使用 GITHUB_TOKEN 的鉴权 URL 格式
 AUTH_REPO_URL="https://oauth2:${GITHUB_TOKEN}@github.com/k279601146/sub2api-fork.git"
 # 转换成使用 gitclone 镜像加速的鉴权 URL
-ACCELERATED_REPO_URL="https://oauth2:${GITHUB_TOKEN}@gitclone.com/github.com/k279601146/sub2api-fork.git"
+ACCELERATED_REPO_URL="https://oauth2:${GITHUB_TOKEN}@gh-proxy.com/github.com/k279601146/sub2api-fork.git"
 
 echo "=== [1/5] 备份当前运行数据与配置 ==="
 mkdir -p "$BACKUP_DIR"
 if [ -d "$DEPLOY_DIR" ] && [ -f "$DEPLOY_DIR/.env" ]; then
+  mkdir -p "$DEPLOY_DIR/data"
   tar czf "$BACKUP_DIR/deploy-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$DEPLOY_DIR" .env data/ || true
 fi
 
