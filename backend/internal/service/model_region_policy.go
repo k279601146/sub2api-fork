@@ -22,11 +22,12 @@ type geoIPCountryReader interface {
 }
 
 type ModelRegionPolicy struct {
-	enabled  bool
-	reader   geoIPCountryReader
-	allowed  map[string]struct{}
-	initErr  error
-	closeMux sync.Mutex
+	enabled         bool
+	reader          geoIPCountryReader
+	allowed         map[string]struct{}
+	allowedPatterns []string
+	initErr         error
+	closeMux        sync.Mutex
 }
 
 func NewModelRegionPolicy(cfg *config.Config) *ModelRegionPolicy {
@@ -37,6 +38,7 @@ func NewModelRegionPolicy(cfg *config.Config) *ModelRegionPolicy {
 
 	policy.enabled = true
 	policy.allowed = buildAllowedModelSet(cfg.ModelRegionIsolation.CNAllowedModels)
+	policy.allowedPatterns = buildAllowedModelPatterns(cfg.ModelRegionIsolation.CNAllowedModels)
 
 	path := strings.TrimSpace(cfg.ModelRegionIsolation.GeoIPMMDBPath)
 	if path == "" {
@@ -67,6 +69,32 @@ func buildAllowedModelSet(models []string) map[string]struct{} {
 		}
 	}
 	return allowed
+}
+
+func buildAllowedModelPatterns(models []string) []string {
+	seen := make(map[string]struct{}, len(models)*2)
+	patterns := make([]string, 0, len(models)*2)
+	for _, model := range models {
+		normalized := NormalizeRegionModelID(model)
+		if normalized == "" {
+			continue
+		}
+		candidates := []string{normalized}
+		if strings.HasPrefix(normalized, "models/") {
+			candidates = append(candidates, strings.TrimPrefix(normalized, "models/"))
+		}
+		for _, candidate := range candidates {
+			if candidate == "" {
+				continue
+			}
+			if _, ok := seen[candidate]; ok {
+				continue
+			}
+			seen[candidate] = struct{}{}
+			patterns = append(patterns, candidate)
+		}
+	}
+	return patterns
 }
 
 func NormalizeRegionModelID(model string) string {
@@ -104,8 +132,20 @@ func (p *ModelRegionPolicy) IsModelAllowed(scope string, model string) bool {
 	if p == nil || !p.enabled || scope != ModelRegionScopeCN {
 		return true
 	}
-	_, ok := p.allowed[NormalizeRegionModelID(model)]
-	return ok
+	normalized := NormalizeRegionModelID(model)
+	if normalized == "" {
+		return false
+	}
+	if _, ok := p.allowed[normalized]; ok {
+		return true
+	}
+	bareModel := strings.TrimPrefix(normalized, "models/")
+	for _, pattern := range p.allowedPatterns {
+		if strings.Contains(normalized, pattern) || strings.Contains(bareModel, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *ModelRegionPolicy) FilterModels(scope string, models []string) []string {

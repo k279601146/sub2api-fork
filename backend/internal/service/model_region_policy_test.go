@@ -67,18 +67,29 @@ func TestModelRegionPolicyModelAllowlist(t *testing.T) {
 			"gpt-5.4",
 			"models/gemini-2.5-flash",
 		}),
+		allowedPatterns: buildAllowedModelPatterns([]string{
+			"gpt-5.4",
+			"models/gemini-2.5-flash",
+			"qwen",
+			"deepseek",
+		}),
 	}
 
 	require.True(t, policy.IsModelAllowed(ModelRegionScopeGlobal, "not-listed"))
 	require.True(t, policy.IsModelAllowed(ModelRegionScopeCN, "gpt-5.4"))
+	require.True(t, policy.IsModelAllowed(ModelRegionScopeCN, "gpt-5.4-mini"))
 	require.True(t, policy.IsModelAllowed(ModelRegionScopeCN, "models/gemini-2.5-flash"))
 	require.True(t, policy.IsModelAllowed(ModelRegionScopeCN, "gemini-2.5-flash"))
+	require.True(t, policy.IsModelAllowed(ModelRegionScopeCN, "qwen3-coder-plus"))
+	require.True(t, policy.IsModelAllowed(ModelRegionScopeCN, "models/deepseek-v3.1"))
 	require.False(t, policy.IsModelAllowed(ModelRegionScopeCN, "gpt-5.5"))
+	require.False(t, policy.IsModelAllowed(ModelRegionScopeCN, "claude-3-5-sonnet"))
 
 	filtered := policy.FilterModels(ModelRegionScopeCN, []string{
 		"gpt-5.4",
 		"gpt-5.5",
 		"models/gemini-2.5-flash",
+		"qwen-max-latest",
 	})
-	require.Equal(t, []string{"gpt-5.4", "models/gemini-2.5-flash"}, filtered)
+	require.Equal(t, []string{"gpt-5.4", "models/gemini-2.5-flash", "qwen-max-latest"}, filtered)
 }

@@ -60,6 +60,7 @@ server:
 # Enable request-time region based model filtering.
 # Only explicit overseas public IPs get the full model list.
 # Unknown IPs, private IPs, loopback, local dev, or missing mmdb all fall back to CN.
+# cn_allowed_models entries are case-insensitive substring patterns and also support full model IDs.
 # Configure server.trusted_proxies correctly behind reverse proxies; do not trust raw IP headers.
 # Use MaxMind geoipupdate outside the app to refresh the local mmdb file.
 # Keep geoipupdate credentials in host config or secret storage, never in this repository.

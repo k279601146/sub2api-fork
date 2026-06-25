@@ -756,6 +756,12 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
 }
 
 router.beforeEach((to, _from, next) => {
+  // 临时跳转至 http://www.bahew.com/，以后若要恢复，请将以下 if 分支注释或删除
+  if (to.path === '/' || to.path === '/home') {
+    window.location.href = 'http://www.bahew.com/'
+    return
+  }
+
   // 开始导航加载状态
   navigationLoading.startNavigation()
 
