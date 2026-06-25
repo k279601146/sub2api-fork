@@ -53,7 +53,11 @@ git reset --hard "origin/$BRANCH"
 NEW_COMMIT=$(git rev-parse --short HEAD)
 echo "当前更新版本 Commit: $NEW_COMMIT"
 
-echo "=== [3/5] 更新部署目录配置 ==="
+echo "=== [3/5] 同步部署文件并更新配置 ==="
+install -m 0644 "$SRC_DIR/deploy/docker-compose.yml" "$DEPLOY_DIR/docker-compose.yml"
+install -m 0644 "$SRC_DIR/deploy/.env.example" "$DEPLOY_DIR/.env.example"
+install -m 0755 "$SRC_DIR/deploy/docker-entrypoint.sh" "$DEPLOY_DIR/docker-entrypoint.sh"
+
 cd "$DEPLOY_DIR"
 if [ -f .env ]; then
   sed -i "s/^APP_COMMIT=.*/APP_COMMIT=${NEW_COMMIT}/" .env
