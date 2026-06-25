@@ -12,6 +12,7 @@ ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+ARG PNPM_VERSION=11
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
@@ -20,15 +21,16 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# 强制使用国内镜像，优先级高于 .npmrc，解决境内服务器构建超时
+# Force the China registry mirror in Docker builds to avoid npm registry timeouts.
 ENV npm_config_registry=https://registry.npmmirror.com
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ARG PNPM_VERSION
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # Install dependencies first (better caching)
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
-# --mount=type=cache 缓存 pnpm store，避免每次全量重新下载
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc frontend/pnpm-workspace.yaml ./
+# Cache the pnpm store to avoid a full dependency download on every build.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
