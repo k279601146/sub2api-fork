@@ -20,12 +20,17 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
+# 强制使用国内镜像，优先级高于 .npmrc，解决境内服务器构建超时
+ENV npm_config_registry=https://registry.npmmirror.com
+
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install dependencies first (better caching)
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
+# --mount=type=cache 缓存 pnpm store，避免每次全量重新下载
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
