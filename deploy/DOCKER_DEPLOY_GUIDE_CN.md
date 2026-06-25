@@ -65,6 +65,8 @@ DATABASE_PORT=5432
 POSTGRES_USER=sub2api_fork
 POSTGRES_PASSWORD=ArKMbcKDJ4bpWx4x
 POSTGRES_DB=sub2api_fork
+# 如果 PostgreSQL 拒绝非加密连接（日志含 no encryption），改为 require 或 prefer
+DATABASE_SSLMODE=disable
 
 # 如果容器内后端无法通过 127.0.0.1 访问宿主机 PG，请在 config.yaml 自动生成后，
 # 或在环境变量中将数据库 HOST 设置为 Docker 默认网桥网关 IP (通常是 172.17.0.1)
