@@ -580,6 +580,56 @@ func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
 	require.Equal(t, int64(1), okRepo.listAllCalls.Load())
 }
 
+func TestGetAvailableModels_CacheKeyIncludesRegionScope(t *testing.T) {
+	resetGatewayHotpathStatsForTest()
+
+	groupID := int64(9)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: PlatformAnthropic,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"cn-model": "cn-model",
+						},
+					},
+				},
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	cnModels := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeCN)
+	require.Equal(t, []string{"cn-model"}, cnModels)
+	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
+
+	repo.byGroup[groupID] = []Account{
+		{
+			ID:       2,
+			Platform: PlatformAnthropic,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"global-model": "global-model",
+				},
+			},
+		},
+	}
+
+	globalModels := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeGlobal)
+	require.Equal(t, []string{"global-model"}, globalModels)
+	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
+
+	cnModelsAgain := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeCN)
+	require.Equal(t, []string{"cn-model"}, cnModelsAgain)
+	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
+}
+
 func TestGatewayHotpathHelpers_CacheTTLAndStickyContext(t *testing.T) {
 	t.Run("resolve_user_group_rate_cache_ttl", func(t *testing.T) {
 		require.Equal(t, defaultUserGroupRateCacheTTL, resolveUserGroupRateCacheTTL(nil))

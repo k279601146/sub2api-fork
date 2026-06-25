@@ -424,8 +424,15 @@ func resolveModelsListCacheTTL(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.Gateway.ModelsListCacheTTLSeconds) * time.Second
 }
 
-func modelsListCacheKey(groupID *int64, platform string) string {
-	return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
+func modelsListCacheKey(groupID *int64, platform string, regionScope ...string) string {
+	scope := ""
+	if len(regionScope) > 0 {
+		scope = strings.TrimSpace(regionScope[0])
+	}
+	if scope == "" {
+		return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
+	}
+	return fmt.Sprintf("%d|%s|%s", derefGroupID(groupID), strings.TrimSpace(platform), scope)
 }
 
 func prefetchedStickyGroupIDFromContext(ctx context.Context) (int64, bool) {
@@ -9348,8 +9355,8 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 
 // GetAvailableModels returns the list of models available for a group
 // It aggregates model_mapping keys from all schedulable accounts in the group
-func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
-	cacheKey := modelsListCacheKey(groupID, platform)
+func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string, regionScope ...string) []string {
+	cacheKey := modelsListCacheKey(groupID, platform, regionScope...)
 	if s.modelsListCache != nil {
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
 			if models, ok := cached.([]string); ok {
@@ -9427,16 +9434,17 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	}
 
 	normalizedPlatform := strings.TrimSpace(platform)
-	// 完整匹配时精准失效；否则按维度批量失效。
 	if groupID != nil && normalizedPlatform != "" {
 		s.modelsListCache.Delete(modelsListCacheKey(groupID, normalizedPlatform))
+		s.modelsListCache.Delete(modelsListCacheKey(groupID, normalizedPlatform, ModelRegionScopeGlobal))
+		s.modelsListCache.Delete(modelsListCacheKey(groupID, normalizedPlatform, ModelRegionScopeCN))
 		return
 	}
 
 	targetGroup := derefGroupID(groupID)
 	for key := range s.modelsListCache.Items() {
-		parts := strings.SplitN(key, "|", 2)
-		if len(parts) != 2 {
+		parts := strings.SplitN(key, "|", 3)
+		if len(parts) < 2 {
 			continue
 		}
 		groupPart, parseErr := strconv.ParseInt(parts[0], 10, 64)

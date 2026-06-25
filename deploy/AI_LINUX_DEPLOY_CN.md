@@ -1,206 +1,97 @@
-# AI 助手 Linux 源码部署指南
+# Sub2API Linux 混合模式部署指南 (宝塔面板 + Docker + 外部 PostgreSQL)
 
-本文档用于指导 AI 运维助手把当前二次开发后的 Sub2API 源码部署到 Linux 服务器，并通过域名 `sub.bahew.com` 对外提供 HTTPS 服务。
+本文档专为在 Linux 服务器上使用**宝塔面板**、**Nginx** 和**宿主机 PostgreSQL**，并结合 **Docker** 运行 Sub2API 核心服务的混合部署模式而编写。本文档还详细说明了本地二次开发代码如何通过 GitHub 同步并在服务器上快速更新构建。
 
-## 推荐架构
+---
 
-- 先安装宝塔面板，用于后续站点、Nginx、SSL、防火墙和日常运维管理。
-- Sub2API 不使用官方镜像，改为基于当前项目源码在服务器本地构建镜像。
-- PostgreSQL、Redis 和 Sub2API 由 Docker Compose 管理，数据落在部署目录，便于备份迁移。
-- 宝塔 Nginx 只做反向代理和 HTTPS，转发到宿主机本地 `127.0.0.1:8080`。
-- 不启动浏览器测试，验收全部使用 `curl`、`docker compose`、`systemctl` 和宝塔/Nginx 状态检查。
+## 1. 架构设计与路径约定
 
-推荐目录：
+在本项目中，为了最大化利用宝塔面板的便捷管理，同时保持服务的独立性与安全性，我们采用以下混合部署方案：
 
-```text
-/opt/sub2api-src        # 当前二开源码仓库或上传后的源码
-/opt/sub2api-deploy     # Compose、.env、运行数据
-/opt/sub2api-backups    # 备份文件
-```
+- **宝塔面板**：用于管理 Nginx、安全组、SSL 证书以及系统的防火墙。
+- **Nginx (宝塔安装)**：作为反向代理，启用 `underscores_in_headers` 以支持自定义请求头，并配置 SSL。
+- **PostgreSQL**：运行在宿主机（由宝塔或系统安装），使用已建好的数据库：
+  - **数据库名**：`sub2api_fork`
+  - **用户名**：`sub2api_fork`
+  - **密码**：`ArKMbcKDJ4bpWx4x`
+  - **地址**：宿主机内网 IP 或 `172.17.0.1`（Docker 网桥的宿主机 IP，或使用宿主机公网 IP）。
+- **Sub2API & Redis**：通过 Docker 运行。Sub2API 使用**本地二开源码**在服务器现场构建，以确保二开逻辑生效。
 
-## 交给 AI 助手的任务说明
+### 目录与路径映射
 
-可以把下面这段直接发给具备 SSH 权限的 AI 运维助手：
+按照宝塔面板和一般 Linux 规范：
+- **网站安装/源码目录** (`/www/wwwroot/sub2api-fork`)：用于存放同步自 GitHub 的最新二次开发源码。
+- **部署与数据运行目录** (`/www/wwwroot/sub2api-deploy`)：用于存放 `docker-compose.yml`、`.env` 配置文件以及 Redis、运行日志等数据。
+- **备份目录** (`/www/backup/sub2api`)：用于存储备份文件。
 
-```text
-请在 Linux 服务器上部署当前二次开发版 Sub2API。
+---
 
-固定域名：sub.bahew.com
-源码目录：/opt/sub2api-src
-部署目录：/opt/sub2api-deploy
-应用监听：127.0.0.1:8080
-管理面板：宝塔面板
-反向代理：宝塔 Nginx
-HTTPS：宝塔面板申请 Let's Encrypt 证书，或使用同等命令行证书方案
+## 2. 部署前置检查与准备
 
-要求：
-1. 先检查系统、DNS、端口和已有服务，不要覆盖已有部署。
-2. 先安装宝塔面板，安装命令使用用户提供的脚本。
-3. 必须使用当前二开源码构建 Sub2API，不要拉取 weishaw/sub2api 官方镜像作为应用镜像。
-4. PostgreSQL、Redis、Sub2API 使用 Docker Compose 管理。
-5. 自动生成强随机 POSTGRES_PASSWORD、JWT_SECRET、TOTP_ENCRYPTION_KEY、ADMIN_PASSWORD。
-6. 不在日志或回复中明文输出密钥；只说明密钥已写入 /opt/sub2api-deploy/.env。
-7. Nginx 必须开启 underscores_in_headers on，以兼容带下划线的请求头。
-8. 不启动浏览器测试；使用 curl 验证 /health 和 HTTPS 响应。
-9. 完成后输出宝塔入口获取方式、服务状态、访问地址、管理员账号获取方式和常用运维命令。
-```
+在开始前，请登录服务器执行以下确认：
 
-## 部署前检查
+### 2.1 确认宿主机数据库连接
+确保 Docker 容器能够连接到宿主机的 PostgreSQL。
+1. 在宝塔面板中，进入 **数据库** -> **PostgreSQL**。
+2. 确保 `sub2api_fork` 数据库的“访问权限”设置为“所有人”或“指定IP”（添加 `172.17.0.0/16` 或 `172.18.0.0/16` 允许 Docker 容器访问）。
+3. 记录宿主机在 Docker 网卡上的 IP（通常为 `172.17.0.1`）。可以通过在宿主机运行以下命令获取：
+   ```bash
+   ip addr show docker0 | grep -Po 'inet \K[\d.]+'
+   ```
 
-AI 助手开始执行前必须确认：
-
-- 已获得服务器 SSH 权限，并具备 `root` 或 `sudo` 权限。
-- `sub.bahew.com` 的 DNS `A` 或 `AAAA` 记录已经指向目标服务器公网 IP。
-- 服务器安全组允许入站 `22/tcp`、`80/tcp`、`443/tcp`，宝塔面板端口按安装输出放行。
-- 服务器上没有正在使用 `80`、`443`、`8080` 的冲突服务，或已经确认可以调整。
-- 当前二开源码已经能通过 Git 拉取，或可以上传到服务器。
-
-检查命令：
-
+### 2.2 安装 Docker & Docker Compose
+如果服务器尚未安装 Docker，请先安装：
 ```bash
-set -euo pipefail
+sudo apt-get update && sudo apt-get install -y curl git openssl
 
-DOMAIN="sub.bahew.com"
-SRC_DIR="/opt/sub2api-src"
-APP_DIR="/opt/sub2api-deploy"
-BACKUP_DIR="/opt/sub2api-backups"
-APP_PORT="8080"
-
-hostnamectl || true
-id
-ss -lntp | grep -E ':(80|443|8080)\b' || true
-getent ahosts "$DOMAIN" || true
-curl -4s ifconfig.me || true
-```
-
-如果 DNS 没有解析到当前服务器，暂停证书配置并提示用户先修改 DNS。应用可以先部署，但 HTTPS 证书签发依赖公网 DNS 和 `80/tcp` 可访问。
-
-## 1. 安装宝塔面板
-
-按用户要求，宝塔面板必须先安装。安装脚本如下：
-
-```bash
-if [ -f /usr/bin/curl ]; then
-  curl -sSO https://download.bt.cn/install/install_panel.sh
-else
-  wget -O install_panel.sh https://download.bt.cn/install/install_panel.sh
-fi
-bash install_panel.sh ed8484bec
-```
-
-安装完成后记录宝塔输出的面板地址、用户名、密码和安全入口。不要把面板密码写入公开日志。
-
-常用宝塔命令：
-
-```bash
-bt status
-bt default
-```
-
-建议在宝塔里安装或确认：
-
-- Nginx
-- Docker 管理器，便于查看容器；命令行仍以 Docker Compose 为准
-- 系统防火墙放行 `80`、`443` 和宝塔面板端口
-
-## 2. 安装基础命令和 Docker
-
-以下命令适用于 Ubuntu/Debian。其他发行版按系统包管理器等价安装 `git`、`curl`、`openssl`、`docker` 和 Docker Compose v2。
-
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg git openssl
-```
-
-安装 Docker：
-
-```bash
+# 安装 Docker
 if ! command -v docker >/dev/null 2>&1; then
-  . /etc/os-release
-  case "$ID" in
-    ubuntu|debian) DOCKER_REPO_ID="$ID" ;;
-    *) echo "当前脚本只自动配置 Ubuntu/Debian 的 Docker 源，请按发行版手动安装 Docker。"; exit 1 ;;
-  esac
-
-  sudo install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL "https://download.docker.com/linux/${DOCKER_REPO_ID}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  sudo chmod a+r /etc/apt/keyrings/docker.gpg
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_REPO_ID} ${VERSION_CODENAME} stable" \
-    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-  sudo apt-get update
-  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  curl -fsSL https://get.docker.com | bash -s docker
 fi
-
 sudo systemctl enable --now docker
-docker compose version
 ```
 
-## 3. 准备当前源码
+---
 
-不要从官方仓库重新拉取未二开的代码。使用用户的二开仓库地址或上传包。
+## 3. 步骤一：拉取二开源码
 
-方式 A：从你的 Git 仓库拉取：
+我们将本地二次开发的代码推送到 GitHub（例如：`https://github.com/your-username/sub2api-fork.git`），然后在服务器拉取。
 
 ```bash
-sudo mkdir -p "$SRC_DIR"
-sudo chown "$USER":"$USER" "$SRC_DIR"
+# 创建网站安装目录并赋予权限
+sudo mkdir -p /www/wwwroot/sub2api-fork
+sudo chown -R $USER:$USER /www/wwwroot/sub2api-fork
 
-# 替换为你的二开仓库地址
-git clone <YOUR_SUB2API_FORK_REPO_URL> "$SRC_DIR"
-cd "$SRC_DIR"
-git status --short
-git rev-parse --short HEAD
+# 克隆代码
+git clone https://github.com/your-username/sub2api-fork.git /www/wwwroot/sub2api-fork
 ```
 
-方式 B：上传当前源码包：
+---
+
+## 4. 步骤二：配置部署环境
+
+我们创建一个独立的运行目录 `/www/wwwroot/sub2api-deploy`，避免源码目录被日志、持久化卷和 `.env` 配置文件污染。
 
 ```bash
-sudo mkdir -p "$SRC_DIR"
-sudo chown "$USER":"$USER" "$SRC_DIR"
-
-# 示例：把 sub2api-fork.tar.gz 上传到 /tmp 后解压
-tar xzf /tmp/sub2api-fork.tar.gz -C "$SRC_DIR" --strip-components=1
-cd "$SRC_DIR"
-git status --short || true
+# 创建部署与运行数据目录
+sudo mkdir -p /www/wwwroot/sub2api-deploy/redis_data
+sudo mkdir -p /www/wwwroot/sub2api-deploy/data
+sudo chown -R $USER:$USER /www/wwwroot/sub2api-deploy
+cd /www/wwwroot/sub2api-deploy
 ```
 
-构建前确认关键文件存在：
+### 4.1 编写 `docker-compose.yml`
+在此方案中，我们剔除了 PostgreSQL 容器，直接使用宿主机的数据库。Redis 仍运行 in Docker 中，Sub2API 基于前面的源码目录现场构建。
 
-```bash
-test -f "$SRC_DIR/Dockerfile"
-test -f "$SRC_DIR/frontend/package.json"
-test -f "$SRC_DIR/frontend/pnpm-lock.yaml"
-test -f "$SRC_DIR/backend/go.mod"
-```
+在 `/www/wwwroot/sub2api-deploy` 下创建 `docker-compose.yml`：
 
-## 4. 创建源码构建版 Compose
+```yaml
+version: '3.8'
 
-部署目录只保存运行配置和数据，源码目录只保存代码。
-
-```bash
-sudo mkdir -p "$APP_DIR" "$BACKUP_DIR"
-sudo chown "$USER":"$USER" "$APP_DIR" "$BACKUP_DIR"
-cd "$APP_DIR"
-
-if [ -f docker-compose.yml ] || [ -f .env ]; then
-  echo "部署目录已存在，请先确认是否为旧部署：$APP_DIR"
-  ls -la "$APP_DIR"
-  exit 1
-fi
-
-mkdir -p data postgres_data redis_data
-chmod 700 data postgres_data redis_data
-```
-
-写入 `docker-compose.yml`。这里的 `sub2api` 服务使用 `build.context: ${SRC_DIR}`，会从当前二开源码构建镜像。
-
-```bash
-cat > docker-compose.yml <<'YAML'
 services:
   sub2api:
     build:
-      context: ${SRC_DIR}
+      context: /www/wwwroot/sub2api-fork
       dockerfile: Dockerfile
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
@@ -223,37 +114,36 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_USER=${POSTGRES_USER:-sub2api}
-      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      
+      # 外部 PostgreSQL 数据库配置（指向宿主机）
+      - DATABASE_HOST=${DATABASE_HOST:-172.17.0.1}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USER=${POSTGRES_USER:-sub2api_fork}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-ArKMbcKDJ4bpWx4x}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api_fork}
       - DATABASE_SSLMODE=disable
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-256}
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-128}
+      
+      # 容器内 Redis 配置
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-4096}
       - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-256}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub.bahew.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      - JWT_SECRET=${JWT_SECRET:-}
+      
+      # 业务变量
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
-      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
       - TZ=${TZ:-Asia/Shanghai}
-      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
-      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
-      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
-      - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
-      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
-      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
-      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
-      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+      
+      # 安全配置
+      - SECURITY_URL_ALLOWLIST_ENABLED=false
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -264,31 +154,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-
-  postgres:
-    image: postgres:18-alpine
-    container_name: sub2api-postgres
-    restart: unless-stopped
-    ulimits:
-      nofile:
-        soft: 100000
-        hard: 100000
-    volumes:
-      - ./postgres_data:/var/lib/postgresql/data
-    environment:
-      - PGDATA=/var/lib/postgresql/data
-      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
-      - TZ=${TZ:-Asia/Shanghai}
-    networks:
-      - sub2api-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
   redis:
     image: redis:8-alpine
@@ -322,24 +187,22 @@ services:
 networks:
   sub2api-network:
     driver: bridge
-YAML
 ```
 
-## 5. 写入生产环境变量
-
-自动生成密钥并写入 `.env`。不要在最终回复里粘贴这些密钥。
+### 4.2 写入环境变量文件 `.env`
+自动生成高强度安全密钥，并配置外部数据库信息。执行以下脚本直接生成 `.env`：
 
 ```bash
-cd "$APP_DIR"
+cd /www/wwwroot/sub2api-deploy
 
-APP_COMMIT="$(cd "$SRC_DIR" && git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
-POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+# 获取代码最新 Commit Hash 作为构建 Tag
+APP_COMMIT="$(cd /www/wwwroot/sub2api-fork && git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
 JWT_SECRET="$(openssl rand -hex 32)"
 TOTP_ENCRYPTION_KEY="$(openssl rand -hex 32)"
 ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -d '=+/' | cut -c1-20)"
+REDIS_PASSWORD="$(openssl rand -hex 16)"
 
 cat > .env <<EOF
-SRC_DIR=${SRC_DIR}
 APP_COMMIT=${APP_COMMIT}
 APP_TAG=${APP_COMMIT}
 BIND_HOST=127.0.0.1
@@ -347,18 +210,27 @@ SERVER_PORT=8080
 SERVER_MODE=release
 RUN_MODE=standard
 TZ=Asia/Shanghai
-POSTGRES_USER=sub2api
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_DB=sub2api
-REDIS_PASSWORD=
-ADMIN_EMAIL=admin@sub.bahew.com
+
+# PostgreSQL 宿主机配置
+DATABASE_HOST=127.0.0.1
+DATABASE_PORT=5432
+POSTGRES_USER=sub2api_fork
+POSTGRES_PASSWORD=ArKMbcKDJ4bpWx4x
+POSTGRES_DB=sub2api_fork
+
+# Redis 配置
+REDIS_PASSWORD=${REDIS_PASSWORD}
+
+# 超级管理员（首次运行自动初始化）
+ADMIN_EMAIL=admin@yourdomain.com
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+# 安全密钥
 JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRE_HOUR=24
 TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
-SECURITY_URL_ALLOWLIST_ENABLED=false
-SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
-SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
+
+# 构建源代理（可加快依赖下载）
 GOPROXY=https://goproxy.cn,direct
 GOSUMDB=sum.golang.google.cn
 EOF
@@ -366,311 +238,143 @@ EOF
 chmod 600 .env
 ```
 
-如果要启用 Simple Mode，再追加：
+---
+
+## 5. 步骤三：构建并启动容器
+
+在运行目录执行以下构建和拉起容器的命令：
 
 ```bash
-cat >> .env <<'EOF'
-RUN_MODE=simple
-SIMPLE_MODE_CONFIRM=true
-EOF
-```
+cd /www/wwwroot/sub2api-deploy
 
-## 6. 构建并启动二开版 Sub2API
-
-首次构建会安装前端依赖、编译前端、编译 Go 后端，并把前端嵌入后端二进制。
-
-```bash
-cd "$APP_DIR"
+# 构建应用镜像并拉起服务
 docker compose build --pull sub2api
 docker compose up -d
+
+# 检查容器状态
 docker compose ps
-docker compose logs --tail=120 sub2api
 ```
 
-本地健康检查：
-
+### 验证应用是否健康：
 ```bash
 curl -fsS http://127.0.0.1:8080/health
 ```
+如果返回 `ok` 或 `{ "status": "ok" }` 则说明 Sub2API 已成功运行，数据库迁移和连接已通过验证。
 
-如果 `/health` 没有返回成功，先查看日志，不要继续配置 HTTPS：
+---
 
+## 6. 步骤四：配置宝塔 Nginx 反代与 SSL
+
+### 6.1 网站配置
+1. 登录宝塔面板，进入 **网站** -> **添加站点**。
+2. **域名** 填写您的解析域名（如 `sub.yourdomain.com`）。
+3. **根目录** 默认为 `/www/wwwroot/sub.yourdomain.com`，可以不用管（PHP 版本选择“纯静态”）。
+4. 进入该站点的 **设置** -> **反向代理** -> **添加反向代理**：
+   - **代理名称**：`sub2api`
+   - **目标URL**：`http://127.0.0.1:8080`
+   - **发送域名**：`$host`
+5. 点击提交。
+
+### 6.2 启用自定义 Headers 支持 (关键步)
+Sub2API 强依赖特定的 HTTP Headers 传输元数据。如果 Nginx 未开启下划线 Headers 支持，代理会丢弃这些关键信息。
+
+1. 在宝塔面板中，进入 **软件商店** -> **Nginx 对应的设置** -> **配置修改**。
+2. 寻找 `http { ... }` 部分，并在里面添加一行：
+   ```nginx
+   underscores_in_headers on;
+   ```
+3. 保存并重载 Nginx 配置。
+
+### 6.3 申请 HTTPS 证书
+1. 网站设置中进入 **SSL** 面板，选择 **Let's Encrypt**。
+2. 勾选您的域名进行申请，成功后开启右侧的 **强制HTTPS** 按钮。
+
+---
+
+## 7. 二次开发版日常更新流程
+
+当本地代码修改并推送到 GitHub 后，您可以使用以下标准化流程无缝更新服务器版本。
+
+为了极致的安全与自动化，我们可以将以下逻辑保存为升级脚本 `/www/wwwroot/sub2api-deploy/update.sh` :
+
+### 7.1 创建升级脚本
 ```bash
-cd "$APP_DIR"
-docker compose logs --tail=200 sub2api
-docker compose logs --tail=100 postgres
-docker compose logs --tail=100 redis
-```
+cat > /www/wwwroot/sub2api-deploy/update.sh <<'EOF'
+#!/bin/bash
+# =============================================================================
+# Sub2API 滚动更新脚本
+# =============================================================================
+set -e
 
-## 7. 配置宝塔 Nginx 反向代理
+SRC_DIR="/www/wwwroot/sub2api-fork"
+DEPLOY_DIR="/www/wwwroot/sub2api-deploy"
+BACKUP_DIR="/www/backup/sub2api"
 
-推荐在宝塔面板中操作：
+echo "=== [1/5] 备份当前数据库与配置 ==="
+mkdir -p "$BACKUP_DIR"
+cd "$DEPLOY_DIR"
+# 备份 .env 与当前运行的 Redis 状态
+tar czf "$BACKUP_DIR/deploy-backup-$(date +%Y%m%d-%H%M%S).tar.gz" .env data/
 
-1. 网站 -> 添加站点。
-2. 域名填写 `sub.bahew.com`。
-3. PHP 版本选择纯静态或不使用 PHP。
-4. 反向代理目标填写 `http://127.0.0.1:8080`。
-5. SSL -> Let's Encrypt -> 申请证书并开启强制 HTTPS。
-
-如果需要 AI 助手通过命令行写入宝塔 Nginx 配置，可使用下面的方式。宝塔 Nginx 常见路径为 `/www/server/nginx/conf/nginx.conf` 和 `/www/server/panel/vhost/nginx/`。
-
-先写入 Nginx 全局配置，开启下划线请求头和 WebSocket upgrade 变量：
-
-```bash
-BT_NGINX_CONF="/www/server/nginx/conf/nginx.conf"
-
-if [ -f "$BT_NGINX_CONF" ]; then
-  if ! grep -q 'underscores_in_headers on;' "$BT_NGINX_CONF"; then
-    sudo sed -i '/http[[:space:]]*{/a \    underscores_in_headers on;\n    map $http_upgrade $connection_upgrade {\n        default upgrade;\n        "" close;\n    }' "$BT_NGINX_CONF"
-  fi
-else
-  echo "未找到宝塔 Nginx 主配置，请先在宝塔面板安装 Nginx。"
-  exit 1
-fi
-```
-
-写入站点反向代理配置：
-
-```bash
-sudo mkdir -p /www/server/panel/vhost/nginx
-sudo tee /www/server/panel/vhost/nginx/sub.bahew.com.conf >/dev/null <<'NGINX'
-server {
-    listen 80;
-    listen [::]:80;
-    server_name sub.bahew.com;
-
-    client_max_body_size 256m;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-}
-NGINX
-
-sudo /www/server/nginx/sbin/nginx -t
-sudo /etc/init.d/nginx reload
-```
-
-HTTP 验证：
-
-```bash
-curl -I http://sub.bahew.com/health
-```
-
-## 8. 配置 HTTPS
-
-推荐使用宝塔面板申请证书：
-
-1. 网站 -> `sub.bahew.com` -> SSL。
-2. 选择 Let's Encrypt。
-3. 申请成功后开启强制 HTTPS。
-4. 确认站点配置仍保留反向代理到 `127.0.0.1:8080`。
-
-如果证书由宝塔托管，后续续期也交给宝塔，不要再用另一套工具重复管理同一站点证书。
-
-HTTPS 验收：
-
-```bash
-curl -fsS https://sub.bahew.com/health
-curl -I https://sub.bahew.com/
-```
-
-## 9. 管理员账号
-
-默认写入：
-
-- 管理员邮箱：`admin@sub.bahew.com`
-- 管理员密码：保存在 `/opt/sub2api-deploy/.env` 的 `ADMIN_PASSWORD`
-
-查看管理员密码时只在服务器本机执行，不要把密码发到公共日志：
-
-```bash
-cd /opt/sub2api-deploy
-grep '^ADMIN_PASSWORD=' .env
-```
-
-首次登录后请立即修改管理员密码，并妥善备份 `.env`。
-
-## 10. 二开版本更新流程
-
-每次更新代码前先备份运行目录：
-
-```bash
-cd /opt
-sudo tar czf "$BACKUP_DIR/sub2api-deploy-$(date +%Y%m%d-%H%M%S).tar.gz" sub2api-deploy
-```
-
-拉取或上传新源码：
-
-```bash
+echo "=== [2/5] 拉取 GitHub 最新二开代码 ==="
 cd "$SRC_DIR"
-git status --short
-git pull --ff-only
-git rev-parse --short HEAD
-```
+git fetch --all
+git reset --hard origin/main # 强制同步为 Github 的最新 main 分支
 
-重新构建并滚动替换应用容器：
+# 获取最新 commit hash
+NEW_COMMIT=$(git rev-parse --short HEAD)
+echo "当前更新版本 Commit: $NEW_COMMIT"
 
-```bash
-cd "$APP_DIR"
-NEW_COMMIT="$(cd "$SRC_DIR" && git rev-parse --short HEAD)"
+echo "=== [3/5] 更新构建配置 ==="
+cd "$DEPLOY_DIR"
 sed -i "s/^APP_COMMIT=.*/APP_COMMIT=${NEW_COMMIT}/" .env
 sed -i "s/^APP_TAG=.*/APP_TAG=${NEW_COMMIT}/" .env
 
-docker compose build --pull sub2api
-docker compose up -d sub2api
-docker compose logs --tail=120 sub2api
-curl -fsS http://127.0.0.1:8080/health
-curl -fsS https://sub.bahew.com/health
-```
-
-## 11. 回滚流程
-
-如果新版本异常，优先用最近备份恢复部署目录，或切回上一个 Git commit 后重建。
-
-切回源码版本重建：
-
-```bash
-cd "$SRC_DIR"
-git log --oneline -5
-git checkout <OLD_COMMIT>
-
-cd "$APP_DIR"
-OLD_COMMIT="$(cd "$SRC_DIR" && git rev-parse --short HEAD)"
-sed -i "s/^APP_COMMIT=.*/APP_COMMIT=${OLD_COMMIT}/" .env
-sed -i "s/^APP_TAG=.*/APP_TAG=${OLD_COMMIT}/" .env
-
+echo "=== [4/5] 现场构建新版本镜像 ==="
 docker compose build sub2api
+
+echo "=== [5/5] 重启容器应用 ==="
 docker compose up -d sub2api
-curl -fsS http://127.0.0.1:8080/health
+
+echo "=== 更新完成，进行健康检查 ==="
+sleep 3
+if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+  echo ">>> [SUCCESS] 升级成功！服务运行正常。"
+else
+  echo ">>> [ERROR] 健康检查失败，请检查 Docker 日志！"
+  docker compose logs --tail=50 sub2api
+fi
+EOF
+
+chmod +x /www/wwwroot/sub2api-deploy/update.sh
 ```
 
-从备份恢复数据：
-
+### 7.2 执行更新
+以后需要同步更新时，只需连接服务器并运行一行命令即可：
 ```bash
-cd "$APP_DIR"
-docker compose down
-
-cd /opt
-sudo mv sub2api-deploy "sub2api-deploy.broken.$(date +%Y%m%d-%H%M%S)"
-sudo tar xzf "$BACKUP_DIR/sub2api-deploy-YYYYMMDD-HHMMSS.tar.gz"
-sudo chown -R "$USER":"$USER" /opt/sub2api-deploy
-
-cd "$APP_DIR"
-docker compose up -d
+/www/wwwroot/sub2api-deploy/update.sh
 ```
 
-## 12. 常用运维命令
+---
 
-```bash
-cd /opt/sub2api-deploy
+## 8. 故障排除与维护常用命令
 
-# 查看容器状态
-docker compose ps
+进入运行目录 `/www/wwwroot/sub2api-deploy` 执行以下操作：
 
-# 查看应用日志
-docker compose logs -f sub2api
-
-# 重启应用
-docker compose restart sub2api
-
-# 重启全部服务
-docker compose restart
-
-# 停止全部服务
-docker compose down
-
-# 查看宝塔状态和入口
-bt status
-bt default
-
-# 检查宝塔 Nginx
-sudo /www/server/nginx/sbin/nginx -t
-sudo /etc/init.d/nginx reload
-```
-
-## 13. 备份建议
-
-必须备份：
-
-- `/opt/sub2api-deploy/.env`
-- `/opt/sub2api-deploy/data`
-- `/opt/sub2api-deploy/postgres_data`
-- `/opt/sub2api-deploy/redis_data`
-- `/opt/sub2api-src`，或确保 Git 远端包含当前二开代码
-
-备份命令：
-
-```bash
-cd /opt
-sudo mkdir -p "$BACKUP_DIR"
-sudo tar czf "$BACKUP_DIR/sub2api-full-$(date +%Y%m%d-%H%M%S).tar.gz" sub2api-deploy sub2api-src
-```
-
-## 14. 完成标准
-
-部署完成时，AI 助手应给出以下信息：
-
-- 宝塔面板已安装，并说明可通过 `bt default` 查看入口和账号。
-- `docker compose ps` 中 `sub2api`、`postgres`、`redis` 均为运行或健康状态。
-- `curl -fsS http://127.0.0.1:8080/health` 成功。
-- `curl -fsS https://sub.bahew.com/health` 成功。
-- `https://sub.bahew.com/` 可访问。
-- 宝塔 Nginx 配置检测成功。
-- 管理员邮箱为 `admin@sub.bahew.com`，管理员密码保存在 `/opt/sub2api-deploy/.env`。
-- 当前应用镜像由 `/opt/sub2api-src` 的源码构建，不是官方 `weishaw/sub2api:latest` 镜像。
-
-## 15. 故障排查
-
-端口冲突：
-
-```bash
-sudo ss -lntp | grep -E ':(80|443|8080)\b'
-```
-
-构建失败：
-
-```bash
-cd /opt/sub2api-deploy
-docker compose build --no-cache sub2api
-```
-
-应用无法启动：
-
-```bash
-cd /opt/sub2api-deploy
-docker compose logs --tail=200 sub2api
-docker compose logs --tail=100 postgres
-docker compose logs --tail=100 redis
-```
-
-宝塔 Nginx 502：
-
-```bash
-curl -v http://127.0.0.1:8080/health
-sudo /www/server/nginx/sbin/nginx -t
-sudo tail -n 100 /www/wwwlogs/nginx_error.log 2>/dev/null || true
-```
-
-证书申请失败：
-
-```bash
-getent ahosts sub.bahew.com
-curl -I http://sub.bahew.com/.well-known/acme-challenge/test || true
-bt status
-```
+- **查看服务状态**：
+  ```bash
+  docker compose ps
+  ```
+- **查看实时日志**：
+  ```bash
+  docker compose logs -f sub2api
+  ```
+- **重启服务**：
+  ```bash
+  docker compose restart sub2api
+  ```
+- **获取超级管理员初始密码**：
+  由于密码是由程序随机生成并写入 `.env` 的，如需获取，请登录服务器执行：
+  ```bash
+  cat /www/wwwroot/sub2api-deploy/.env | grep ADMIN_PASSWORD
+  ```

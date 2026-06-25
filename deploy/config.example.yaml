@@ -55,6 +55,20 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# Model Region Isolation
+# =============================================================================
+# Enable request-time region based model filtering.
+# Only explicit overseas public IPs get the full model list.
+# Unknown IPs, private IPs, loopback, local dev, or missing mmdb all fall back to CN.
+# Configure server.trusted_proxies correctly behind reverse proxies; do not trust raw IP headers.
+# Use MaxMind geoipupdate outside the app to refresh the local mmdb file.
+# Keep geoipupdate credentials in host config or secret storage, never in this repository.
+model_region_isolation:
+  enabled: false
+  geoip_mmdb_path: "/app/data/GeoLite2-Country.mmdb"
+  cn_allowed_models: []
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================

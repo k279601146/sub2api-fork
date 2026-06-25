@@ -92,11 +92,18 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	Dev2                    Dev2Config                    `mapstructure:"dev2"`
+	ModelRegionIsolation    ModelRegionIsolationConfig    `mapstructure:"model_region_isolation"`
 }
 
 type Dev2Config struct {
 	InternalSecret string `mapstructure:"internal_secret"`
 	ModelName      string `mapstructure:"model_name"`
+}
+
+type ModelRegionIsolationConfig struct {
+	Enabled         bool     `mapstructure:"enabled"`
+	GeoIPMMDBPath   string   `mapstructure:"geoip_mmdb_path"`
+	CNAllowedModels []string `mapstructure:"cn_allowed_models"`
 }
 
 type LogConfig struct {
@@ -1360,6 +1367,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		cfg.Gateway.UserMessageQueue.Mode = ""
 	}
 
+	cfg.ModelRegionIsolation.GeoIPMMDBPath = strings.TrimSpace(cfg.ModelRegionIsolation.GeoIPMMDBPath)
+	cfg.ModelRegionIsolation.CNAllowedModels = normalizeUniqueStringSlice(cfg.ModelRegionIsolation.CNAllowedModels)
+
 	// Auto-generate TOTP encryption key if not set (32 bytes = 64 hex chars for AES-256)
 	cfg.Totp.EncryptionKey = strings.TrimSpace(cfg.Totp.EncryptionKey)
 	if cfg.Totp.EncryptionKey == "" {
@@ -1672,6 +1682,10 @@ func setDefaults() {
 
 	viper.SetDefault("dev2.internal_secret", "")
 	viper.SetDefault("dev2.model_name", "")
+
+	viper.SetDefault("model_region_isolation.enabled", false)
+	viper.SetDefault("model_region_isolation.geoip_mmdb_path", "")
+	viper.SetDefault("model_region_isolation.cn_allowed_models", []string{})
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
@@ -2630,6 +2644,9 @@ func (c *Config) Validate() error {
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")
 	}
+	if c.ModelRegionIsolation.Enabled && len(normalizeStringSlice(c.ModelRegionIsolation.CNAllowedModels)) == 0 {
+		return fmt.Errorf("model_region_isolation.cn_allowed_models is required when model_region_isolation.enabled=true")
+	}
 	return nil
 }
 
@@ -2646,6 +2663,24 @@ func normalizeStringSlice(values []string) []string {
 		normalized = append(normalized, trimmed)
 	}
 	return normalized
+}
+
+func normalizeUniqueStringSlice(values []string) []string {
+	normalized := normalizeStringSlice(values)
+	if len(normalized) == 0 {
+		return normalized
+	}
+	seen := make(map[string]struct{}, len(normalized))
+	unique := make([]string, 0, len(normalized))
+	for _, value := range normalized {
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, value)
+	}
+	return unique
 }
 
 func isWeakJWTSecret(secret string) bool {

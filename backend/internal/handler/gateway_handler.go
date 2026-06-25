@@ -52,6 +52,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	modelRegionPolicy         *service.ModelRegionPolicy
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -107,6 +108,7 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		modelRegionPolicy:         service.NewModelRegionPolicy(cfg),
 	}
 }
 
@@ -189,6 +191,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 验证 model 必填
 	if reqModel == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+	if !h.ensureModelAllowedForRegion(c, reqModel) {
 		return
 	}
 
@@ -946,8 +951,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
+	regionScope := h.modelRegionScope(c)
 	// Get available models from account configurations (without platform filter)
-	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, "")
+	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, "", regionScope)
+	availableModels = h.filterRegionModelIDs(c, availableModels)
 
 	if len(availableModels) > 0 {
 		// Build model list from whitelist
@@ -970,25 +977,34 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Fallback to default models
 	if platform == "openai" {
+		models := filterRegionModels(h.modelRegionPolicy, regionScope, openai.DefaultModels, func(model openai.Model) string {
+			return model.ID
+		})
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   openai.DefaultModels,
+			"data":   models,
 		})
 		return
 	}
 
+	models := filterRegionModels(h.modelRegionPolicy, regionScope, claude.DefaultModels, func(model claude.Model) string {
+		return model.ID
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   claude.DefaultModels,
+		"data":   models,
 	})
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
+	models := filterRegionModels(h.modelRegionPolicy, h.modelRegionScope(c), antigravity.DefaultModels(), func(model antigravity.ClaudeModel) string {
+		return model.ID
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   antigravity.DefaultModels(),
+		"data":   models,
 	})
 }
 
@@ -1511,6 +1527,9 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	// 验证 model 必填
 	if parsedReq.Model == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+	if !h.ensureModelAllowedForRegion(c, parsedReq.Model) {
 		return
 	}
 

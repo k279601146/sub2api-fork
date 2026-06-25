@@ -45,10 +45,15 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
+	regionScope := h.modelRegionScope(c)
 
 	// 强制 antigravity 模式：返回 antigravity 支持的模型列表
 	if forcePlatform == service.PlatformAntigravity {
-		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
+		list := antigravity.FallbackGeminiModelsList()
+		list.Models = filterRegionModels(h.modelRegionPolicy, regionScope, list.Models, func(model antigravity.GeminiModel) string {
+			return model.Name
+		})
+		c.JSON(http.StatusOK, list)
 		return
 	}
 
@@ -58,7 +63,11 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
 		if hasAntigravity {
 			// antigravity 账户使用静态模型列表
-			c.JSON(http.StatusOK, gemini.FallbackModelsList())
+			list := gemini.FallbackModelsList()
+			list.Models = filterRegionModels(h.modelRegionPolicy, regionScope, list.Models, func(model gemini.Model) string {
+				return model.Name
+			})
+			c.JSON(http.StatusOK, list)
 			return
 		}
 		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
@@ -71,8 +80,15 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 	if shouldFallbackGeminiModels(res) {
-		c.JSON(http.StatusOK, gemini.FallbackModelsList())
+		list := gemini.FallbackModelsList()
+		list.Models = filterRegionModels(h.modelRegionPolicy, regionScope, list.Models, func(model gemini.Model) string {
+			return model.Name
+		})
+		c.JSON(http.StatusOK, list)
 		return
+	}
+	if filteredBody, ok := h.filterGeminiModelsPayload(c, res.Body); ok {
+		res.Body = filteredBody
 	}
 	writeUpstreamResponse(c, res)
 }
@@ -100,7 +116,13 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 
 	// 强制 antigravity 模式：返回 antigravity 模型信息
 	if forcePlatform == service.PlatformAntigravity {
+		if !h.ensureGeminiModelAllowedForRegion(c, modelName) {
+			return
+		}
 		c.JSON(http.StatusOK, antigravity.FallbackGeminiModel(modelName))
+		return
+	}
+	if !h.ensureGeminiModelAllowedForRegion(c, modelName) {
 		return
 	}
 
@@ -184,6 +206,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	setOpsRequestContext(c, modelName, stream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
+	if !h.ensureGeminiModelAllowedForRegion(c, modelName) {
+		return
+	}
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && decision.Blocked {
 		googleError(c, contentModerationStatus(decision), decision.Message)
