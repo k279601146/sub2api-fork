@@ -7,10 +7,21 @@ set -e
 SRC_DIR="/www/wwwroot/sub2api-fork"
 DEPLOY_DIR="/www/wwwroot/sub2api-deploy"
 BACKUP_DIR="/www/backup/sub2api"
-BRANCH="idehotai"
 
-# GitHub 私有仓库凭证
-GITHUB_TOKEN="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"
+# 从部署目录的 .env 文件加载私有变量（如 GITHUB_TOKEN）
+if [ -f "$DEPLOY_DIR/.env" ]; then
+  # 只导出需要的变量
+  export $(grep -E "^(GITHUB_TOKEN|BRANCH)=" "$DEPLOY_DIR/.env" | xargs)
+fi
+
+# 兜底默认分支
+BRANCH="${BRANCH:-idehotai}"
+
+if [ -z "${GITHUB_TOKEN}" ]; then
+  echo "[ERROR] 未在部署目录的 .env 中配置 GITHUB_TOKEN！请先配置该变量。"
+  exit 1
+fi
+
 # 使用 GITHUB_TOKEN 的鉴权 URL 格式
 AUTH_REPO_URL="https://oauth2:${GITHUB_TOKEN}@github.com/k279601146/sub2api-fork.git"
 # 转换成使用 gitclone 镜像加速的鉴权 URL
