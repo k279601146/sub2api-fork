@@ -138,3 +138,8 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
