@@ -10,7 +10,7 @@ BACKUP_DIR="/www/backup/sub2api"
 BRANCH="idehotai"
 
 # GitHub 私有仓库凭证
-GITHUB_TOKEN=${GITHUB_TOKEN:-"your-token-here"}
+GITHUB_TOKEN="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"
 # 使用 GITHUB_TOKEN 的鉴权 URL 格式
 AUTH_REPO_URL="https://oauth2:${GITHUB_TOKEN}@github.com/k279601146/sub2api-fork.git"
 # 转换成使用 gitclone 镜像加速的鉴权 URL
