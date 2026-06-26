@@ -436,6 +436,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			"/v1beta/chat",
 			"/backend-api/codex/responses",
 			"/backend-api/codex/responses/compact",
+			"/internal/dev2/billing/usage",
 			"/antigravity/test",
 			"/setup/init",
 			"/health",

@@ -61,6 +61,7 @@ services:
       # 安全配置
       - SECURITY_URL_ALLOWLIST_ENABLED=false
       - SUB2API_DEBUG_GATEWAY_BODY=/app/data/logs/gateway_debug.log
+      - DEV2_INTERNAL_SECRET=${DEV2_INTERNAL_SECRET}
     depends_on:
       redis:
         condition: service_healthy
