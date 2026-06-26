@@ -26,7 +26,7 @@ ENV npm_config_registry=https://registry.npmmirror.com
 
 # Install pnpm
 ARG PNPM_VERSION
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN npm install -g pnpm@${PNPM_VERSION} --registry=https://registry.npmmirror.com
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc frontend/pnpm-workspace.yaml ./
