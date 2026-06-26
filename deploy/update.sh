@@ -73,10 +73,12 @@ docker compose build sub2api
 
 echo "=== [5/5] 重启并运行新容器 ==="
 docker compose up -d --force-recreate sub2api
-
+#日常重启：docker compose up -d sub2api
+#改配置 / 权限异常 / 配置不生效：docker compose up -d --force-recreate sub2api
+#两者都不会删除数据卷（/app/data 数据库、日志文件都保留，不用担心数据丢失）
 echo "=== 更新完成，进行健康检查 ==="
 sleep 3
-if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+if curl -fsS http://172.17.0.1:8080/health >/dev/null; then
   echo ">>> [SUCCESS] 升级成功！服务运行正常。最新 Commit: $NEW_COMMIT"
 else
   echo ">>> [ERROR] 健康检查失败，请检查 Docker 日志！"

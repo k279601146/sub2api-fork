@@ -121,7 +121,7 @@ services:
       - DATABASE_USER=${POSTGRES_USER:-sub2api_fork}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-ArKMbcKDJ4bpWx4x}
       - DATABASE_DBNAME=${POSTGRES_DB:-sub2api_fork}
-      - DATABASE_SSLMODE=${DATABASE_SSLMODE:-disable}
+      - DATABASE_SSLMODE=disable
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-256}
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-128}
       
@@ -217,8 +217,6 @@ DATABASE_PORT=5432
 POSTGRES_USER=sub2api_fork
 POSTGRES_PASSWORD=ArKMbcKDJ4bpWx4x
 POSTGRES_DB=sub2api_fork
-# 如果 PostgreSQL 拒绝非加密连接（日志含 no encryption），改为 require 或 prefer
-DATABASE_SSLMODE=disable
 
 # Redis 配置
 REDIS_PASSWORD=${REDIS_PASSWORD}
