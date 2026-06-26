@@ -12,6 +12,7 @@ ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+ARG GO_VERSION=1.26.3
 ARG PNPM_VERSION=11
 
 # -----------------------------------------------------------------------------
@@ -44,14 +45,21 @@ ARG COMMIT=docker
 ARG DATE
 ARG GOPROXY
 ARG GOSUMDB
+ARG GO_VERSION
 
 ENV GOPROXY=${GOPROXY}
 ENV GOSUMDB=${GOSUMDB}
-ENV GOTOOLCHAIN=auto
+ENV GOTOOLCHAIN=local
 
 # Install build dependencies
 RUN sed -i 's#https://dl-cdn.alpinelinux.org/alpine#https://mirrors.aliyun.com/alpine#g' /etc/apk/repositories && \
     apk add --no-cache git ca-certificates tzdata
+
+RUN wget -q -O /tmp/go.tgz "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" && \
+    rm -rf /usr/local/go && \
+    tar -C /usr/local -xzf /tmp/go.tgz && \
+    rm /tmp/go.tgz && \
+    go version
 
 WORKDIR /app/backend
 
