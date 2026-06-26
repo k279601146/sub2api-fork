@@ -6,6 +6,10 @@ services:
       context: /www/wwwroot/sub2api-fork
       dockerfile: Dockerfile
       args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
+        GOLANG_IMAGE: ${GOLANG_IMAGE:-golang:1.26.3-alpine}
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20}
+        POSTGRES_IMAGE: ${POSTGRES_IMAGE:-postgres:18-alpine}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
         COMMIT: ${APP_COMMIT:-local}
