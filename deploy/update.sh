@@ -72,6 +72,23 @@ else
   echo "[WARNING] 部署目录下的 .env 文件不存在，请参考部署文档先生成 .env！"
 fi
 
+echo "=== [3.5/5] 修正宝塔 Nginx 反代目标 ==="
+SUB2API_NGINX_PROXY="/www/server/panel/vhost/nginx/proxy/sub.bahew.com/9f6e6800cfae7749eb6c486619254b9c_sub.bahew.com.conf"
+if [ -f "$SUB2API_NGINX_PROXY" ]; then
+  cp "$SUB2API_NGINX_PROXY" "$SUB2API_NGINX_PROXY.bak-$(date +%Y%m%d-%H%M%S)"
+  sed -i -E 's#proxy_pass http://172\.[0-9]+\.[0-9]+\.[0-9]+:8080;#proxy_pass http://127.0.0.1:8080;#' "$SUB2API_NGINX_PROXY"
+  sed -i -E 's#proxy_pass http://sub2api:8080;#proxy_pass http://127.0.0.1:8080;#' "$SUB2API_NGINX_PROXY"
+  if command -v nginx >/dev/null 2>&1; then
+    nginx -t && nginx -s reload
+  elif [ -x /www/server/nginx/sbin/nginx ]; then
+    /www/server/nginx/sbin/nginx -t && /www/server/nginx/sbin/nginx -s reload
+  else
+    echo "[WARNING] 未找到 nginx 命令，请手动检查并重载 Nginx。"
+  fi
+else
+  echo "[INFO] 未找到 sub.bahew.com 宝塔反代配置，跳过 Nginx 修正。"
+fi
+
 echo "=== [4/5] 现场构建新版本 Docker 镜像 ==="
 echo "当前 Docker Compose 数据库连接配置："
 docker compose config | grep -E "DATABASE_(HOST|PORT|USER|DBNAME|SSLMODE):" || true
