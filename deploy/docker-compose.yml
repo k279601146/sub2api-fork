@@ -25,6 +25,7 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
+      - SERVER_TRUSTED_PROXIES=${SERVER_TRUSTED_PROXIES:-127.0.0.1/8,172.16.0.0/12}
       - RUN_MODE=${RUN_MODE:-standard}
       
       # 外部 PostgreSQL 数据库配置（指向宿主机）

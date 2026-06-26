@@ -180,6 +180,40 @@ func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	}
 }
 
+func TestLogger_AccessLogUsesForwardedClientIP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sink := initMiddlewareTestLogger(t)
+
+	r := gin.New()
+	if err := r.SetTrustedProxies([]string{"172.19.0.0/16"}); err != nil {
+		t.Fatalf("set trusted proxies: %v", err)
+	}
+	r.Use(Logger())
+	r.GET("/api/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.RemoteAddr = "172.19.0.1:45678"
+	req.Header.Set("X-Real-IP", "203.0.113.10")
+	req.Header.Set("X-Forwarded-For", "203.0.113.10, 172.19.0.1")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+
+	for _, event := range sink.list() {
+		if event != nil && event.Message == "http request completed" {
+			if got := event.Fields["client_ip"]; got != "203.0.113.10" {
+				t.Fatalf("client_ip=%v, want 203.0.113.10", got)
+			}
+			return
+		}
+	}
+	t.Fatalf("access log event not found")
+}
+
 func TestLogger_HealthPathSkipped(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLogger(t)

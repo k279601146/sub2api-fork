@@ -30,6 +30,11 @@ const (
 	simpleModeAdminConcurrency = 30
 )
 
+var defaultTrustedProxies = []string{
+	"127.0.0.1/8",
+	"172.16.0.0/12",
+}
+
 func setupDefaultAdminConcurrency() int {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("RUN_MODE")), config.RunModeSimple) {
 		return simpleModeAdminConcurrency
@@ -104,9 +109,10 @@ type AdminConfig struct {
 }
 
 type ServerConfig struct {
-	Host string `json:"host" yaml:"host"`
-	Port int    `json:"port" yaml:"port"`
-	Mode string `json:"mode" yaml:"mode"`
+	Host           string   `json:"host" yaml:"host"`
+	Port           int      `json:"port" yaml:"port"`
+	Mode           string   `json:"mode" yaml:"mode"`
+	TrustedProxies []string `json:"trusted_proxies,omitempty" yaml:"trusted_proxies,omitempty"`
 }
 
 type JWTConfig struct {
@@ -531,6 +537,24 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	return defaultValue
 }
 
+func getEnvListOrDefault(key string, defaultValue []string) []string {
+	val := strings.TrimSpace(os.Getenv(key))
+	if val == "" {
+		out := make([]string, len(defaultValue))
+		copy(out, defaultValue)
+		return out
+	}
+	parts := strings.Split(val, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 // AutoSetupFromEnv performs automatic setup using environment variables
 // This is designed for Docker deployment where all config is passed via env vars
 func AutoSetupFromEnv() error {
@@ -565,9 +589,10 @@ func AutoSetupFromEnv() error {
 			Password: getEnvOrDefault("ADMIN_PASSWORD", ""),
 		},
 		Server: ServerConfig{
-			Host: getEnvOrDefault("SERVER_HOST", "0.0.0.0"),
-			Port: getEnvIntOrDefault("SERVER_PORT", 8080),
-			Mode: getEnvOrDefault("SERVER_MODE", "release"),
+			Host:           getEnvOrDefault("SERVER_HOST", "0.0.0.0"),
+			Port:           getEnvIntOrDefault("SERVER_PORT", 8080),
+			Mode:           getEnvOrDefault("SERVER_MODE", "release"),
+			TrustedProxies: getEnvListOrDefault("SERVER_TRUSTED_PROXIES", defaultTrustedProxies),
 		},
 		JWT: JWTConfig{
 			Secret:     getEnvOrDefault("JWT_SECRET", ""),
