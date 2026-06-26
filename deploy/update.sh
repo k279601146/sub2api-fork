@@ -57,6 +57,12 @@ echo "=== [3/5] 同步部署文件并更新配置 ==="
 install -m 0644 "$SRC_DIR/deploy/docker-compose.yml" "$DEPLOY_DIR/docker-compose.yml"
 install -m 0644 "$SRC_DIR/deploy/.env.example" "$DEPLOY_DIR/.env.example"
 install -m 0755 "$SRC_DIR/deploy/docker-entrypoint.sh" "$DEPLOY_DIR/docker-entrypoint.sh"
+mkdir -p "$DEPLOY_DIR/data"
+if [ -f "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" ]; then
+  install -m 0644 "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" "$DEPLOY_DIR/data/GeoLite2-Country.mmdb"
+else
+  echo "[WARNING] GeoLite2-Country.mmdb not found in backend/resources; model_region_isolation geoip lookup may be disabled."
+fi
 
 cd "$DEPLOY_DIR"
 if [ -f .env ]; then
