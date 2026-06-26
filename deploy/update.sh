@@ -95,7 +95,7 @@ docker compose config | grep -E "DATABASE_(HOST|PORT|USER|DBNAME|SSLMODE):" || t
 docker compose build sub2api
 
 echo "=== [5/5] 重启并运行新容器 ==="
-docker compose up -d --force-recreate sub2api
+docker compose up -d  sub2api
 #日常重启：docker compose up -d sub2api
 #改配置 / 权限异常 / 配置不生效：docker compose up -d --force-recreate sub2api
 #两者都不会删除数据卷（/app/data 数据库、日志文件都保留，不用担心数据丢失）
