@@ -6,10 +6,10 @@ services:
       context: /www/wwwroot/sub2api-fork
       dockerfile: Dockerfile
       args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
-        GOLANG_IMAGE: ${GOLANG_IMAGE:-golang:1.26.3-alpine}
-        ALPINE_IMAGE: ${ALPINE_IMAGE:-alpine:3.20}
-        POSTGRES_IMAGE: ${POSTGRES_IMAGE:-postgres:18-alpine}
+        NODE_IMAGE: ${NODE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:24-alpine}
+        GOLANG_IMAGE: ${GOLANG_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26-alpine}
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:3.20}
+        POSTGRES_IMAGE: ${POSTGRES_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/postgres:18-alpine}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
         COMMIT: ${APP_COMMIT:-local}
@@ -74,7 +74,7 @@ services:
       start_period: 30s
 
   redis:
-    image: redis:8-alpine
+    image: ${REDIS_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/redis:8-alpine}
     container_name: sub2api-redis
     restart: unless-stopped
     ulimits:
