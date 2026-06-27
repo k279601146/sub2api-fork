@@ -34,34 +34,51 @@ if [ -d "$DEPLOY_DIR" ] && [ -f "$DEPLOY_DIR/.env" ]; then
   tar czf "$BACKUP_DIR/deploy-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$DEPLOY_DIR" .env data/ || true
 fi
 
-echo "=== [2/5] 拉取 GitHub 二开代码 (使用 Token 鉴权与 gitclone 镜像加速) ==="
+echo "=== [2/5] 检查 GitHub 二开代码版本 (使用 Token 鉴权与 gitclone 镜像加速) ==="
+SOURCE_CHANGED=false
 # 如果源码目录不存在，进行首次克隆
 if [ ! -d "$SRC_DIR/.git" ]; then
   echo "源码目录不存在，正在通过带有 Token 鉴权的加速镜像克隆私有仓库..."
   git clone -b "$BRANCH" "$ACCELERATED_REPO_URL" "$SRC_DIR"
+  SOURCE_CHANGED=true
 fi
 
 cd "$SRC_DIR"
 # 确保本地 git 配置中的 remote url 包含 Token 并且使用了加速镜像
 git remote set-url origin "$ACCELERATED_REPO_URL"
 
-echo "拉取分支 $BRANCH 的最新代码..."
-git fetch --all
-git reset --hard "origin/$BRANCH"
+CURRENT_COMMIT=$(git rev-parse HEAD)
+echo "检查分支 $BRANCH 的远端版本..."
+git fetch origin "$BRANCH"
+REMOTE_COMMIT=$(git rev-parse "origin/$BRANCH")
+
+if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ]; then
+  echo "源码已是最新版本，跳过拉取源码与镜像构建: ${CURRENT_COMMIT:0:12}"
+else
+  echo "发现新版本，更新源码: $CURRENT_COMMIT -> $REMOTE_COMMIT"
+  git reset --hard "origin/$BRANCH"
+  SOURCE_CHANGED=true
+fi
 
 # 获取最新 commit hash
 NEW_COMMIT=$(git rev-parse --short HEAD)
-echo "当前更新版本 Commit: $NEW_COMMIT"
+echo "当前版本 Commit: $NEW_COMMIT"
 
 echo "=== [3/5] 同步部署文件并更新配置 ==="
-install -m 0644 "$SRC_DIR/deploy/docker-compose.yml" "$DEPLOY_DIR/docker-compose.yml"
-install -m 0644 "$SRC_DIR/deploy/.env.example" "$DEPLOY_DIR/.env.example"
-install -m 0755 "$SRC_DIR/deploy/docker-entrypoint.sh" "$DEPLOY_DIR/docker-entrypoint.sh"
-mkdir -p "$DEPLOY_DIR/data"
-if [ -f "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" ]; then
-  install -m 0644 "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" "$DEPLOY_DIR/data/GeoLite2-Country.mmdb"
+if [ "$SOURCE_CHANGED" = true ] || [ ! -f "$DEPLOY_DIR/docker-compose.yml" ]; then
+  install -m 0644 "$SRC_DIR/deploy/docker-compose.yml" "$DEPLOY_DIR/docker-compose.yml"
+  install -m 0644 "$SRC_DIR/deploy/.env.example" "$DEPLOY_DIR/.env.example"
+  install -m 0755 "$SRC_DIR/deploy/docker-entrypoint.sh" "$DEPLOY_DIR/docker-entrypoint.sh"
 else
-  echo "[WARNING] GeoLite2-Country.mmdb not found in backend/resources; model_region_isolation geoip lookup may be disabled."
+  echo "源码未变更，保留现有部署文件。"
+fi
+mkdir -p "$DEPLOY_DIR/data"
+if [ "$SOURCE_CHANGED" = true ] || [ ! -f "$DEPLOY_DIR/data/GeoLite2-Country.mmdb" ]; then
+  if [ -f "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" ]; then
+    install -m 0644 "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" "$DEPLOY_DIR/data/GeoLite2-Country.mmdb"
+  else
+    echo "[WARNING] GeoLite2-Country.mmdb not found in backend/resources; model_region_isolation geoip lookup may be disabled."
+  fi
 fi
 
 cd "$DEPLOY_DIR"
@@ -90,12 +107,18 @@ else
 fi
 
 echo "=== [4/5] 现场构建新版本 Docker 镜像 ==="
-echo "当前 Docker Compose 数据库连接配置："
-docker compose config | grep -E "DATABASE_(HOST|PORT|USER|DBNAME|SSLMODE):" || true
-docker compose build sub2api
+if [ "$SOURCE_CHANGED" = true ]; then
+  echo "源码有变动，先停止容器释放内存，再构建镜像。"
+  docker compose stop sub2api redis >/dev/null 2>&1 || true
+  echo "当前 Docker Compose 数据库连接配置："
+  docker compose config | grep -E "DATABASE_(HOST|PORT|USER|DBNAME|SSLMODE):" || true
+  docker compose build sub2api
+else
+  echo "源码未变更，跳过 Docker 镜像构建。"
+fi
 
-echo "=== [5/5] 重启并运行新容器 ==="
-docker compose up -d  sub2api
+echo "=== [5/5] 重建并运行容器 ==="
+docker compose up -d --force-recreate sub2api
 #日常重启：docker compose up -d sub2api
 #改配置 / 权限异常 / 配置不生效：docker compose up -d --force-recreate sub2api
 #两者都不会删除数据卷（/app/data 数据库、日志文件都保留，不用担心数据丢失）
