@@ -119,6 +119,9 @@ tests
 CLAUDE.md
 .claude
 scripts
+!scripts/
+scripts/*
+!scripts/build-push-tcr.ps1
 .code-review-state
 #openspec/
 code-reviews/

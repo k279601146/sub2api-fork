@@ -2,18 +2,7 @@ version: '3.8'
 
 services:
   sub2api:
-    build:
-      context: /www/wwwroot/sub2api-fork
-      dockerfile: Dockerfile
-      args:
-        NODE_IMAGE: ${NODE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:24-alpine}
-        GOLANG_IMAGE: ${GOLANG_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26-alpine}
-        ALPINE_IMAGE: ${ALPINE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:3.20}
-        POSTGRES_IMAGE: ${POSTGRES_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/postgres:18-alpine}
-        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
-        GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
-        COMMIT: ${APP_COMMIT:-local}
-    image: sub2api-custom:${APP_TAG:-latest}
+    image: ${SUB2API_IMAGE:-ccr.ccs.tencentyun.com/your-namespace/sub2api}:${APP_TAG:-latest}
     container_name: sub2api
     restart: unless-stopped
     ulimits:
