@@ -570,6 +570,7 @@ type GatewayService struct {
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
 	modelsListCacheTTL    time.Duration
+	modelRegionPolicy     *ModelRegionPolicy
 	settingService        *SettingService
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
@@ -639,6 +640,7 @@ func NewGatewayService(
 		settingService:       settingService,
 		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:   modelsListTTL,
+		modelRegionPolicy:    NewModelRegionFilterPolicy(cfg),
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
 		channelService:       channelService,
@@ -9420,12 +9422,20 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		models = append(models, model)
 	}
 	sort.Strings(models)
+	models = s.filterAvailableModelsByRegion(regionScope, models)
 
 	if s.modelsListCache != nil {
 		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
+}
+
+func (s *GatewayService) filterAvailableModelsByRegion(regionScope []string, models []string) []string {
+	if s == nil || s.modelRegionPolicy == nil || len(regionScope) == 0 {
+		return models
+	}
+	return s.modelRegionPolicy.FilterModels(regionScope[0], models)
 }
 
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {

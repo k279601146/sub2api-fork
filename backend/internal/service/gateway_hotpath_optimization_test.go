@@ -592,7 +592,9 @@ func TestGetAvailableModels_CacheKeyIncludesRegionScope(t *testing.T) {
 					Platform: PlatformAnthropic,
 					Credentials: map[string]any{
 						"model_mapping": map[string]any{
-							"cn-model": "cn-model",
+							"claude-sonnet-4-6": "claude-sonnet-4-6",
+							"deepseek-v4-flash": "deepseek-v4-flash",
+							"glm-5.2":           "glm-5.2",
 						},
 					},
 				},
@@ -603,10 +605,21 @@ func TestGetAvailableModels_CacheKeyIncludesRegionScope(t *testing.T) {
 		accountRepo:        repo,
 		modelsListCache:    gocache.New(time.Minute, time.Minute),
 		modelsListCacheTTL: time.Minute,
+		modelRegionPolicy: &ModelRegionPolicy{
+			enabled: true,
+			allowed: buildAllowedModelSet([]string{
+				"deepseek",
+				"glm",
+			}),
+			allowedPatterns: buildAllowedModelPatterns([]string{
+				"deepseek",
+				"glm",
+			}),
+		},
 	}
 
 	cnModels := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeCN)
-	require.Equal(t, []string{"cn-model"}, cnModels)
+	require.Equal(t, []string{"deepseek-v4-flash", "glm-5.2"}, cnModels)
 	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
 
 	repo.byGroup[groupID] = []Account{
@@ -615,18 +628,20 @@ func TestGetAvailableModels_CacheKeyIncludesRegionScope(t *testing.T) {
 			Platform: PlatformAnthropic,
 			Credentials: map[string]any{
 				"model_mapping": map[string]any{
-					"global-model": "global-model",
+					"claude-sonnet-4-6": "claude-sonnet-4-6",
+					"deepseek-v4-flash": "deepseek-v4-flash",
+					"glm-5.2":           "glm-5.2",
 				},
 			},
 		},
 	}
 
 	globalModels := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeGlobal)
-	require.Equal(t, []string{"global-model"}, globalModels)
+	require.Equal(t, []string{"claude-sonnet-4-6", "deepseek-v4-flash", "glm-5.2"}, globalModels)
 	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
 
 	cnModelsAgain := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeCN)
-	require.Equal(t, []string{"cn-model"}, cnModelsAgain)
+	require.Equal(t, []string{"deepseek-v4-flash", "glm-5.2"}, cnModelsAgain)
 	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
 }
 

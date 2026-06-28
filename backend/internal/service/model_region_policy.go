@@ -36,9 +36,7 @@ func NewModelRegionPolicy(cfg *config.Config) *ModelRegionPolicy {
 		return policy
 	}
 
-	policy.enabled = true
-	policy.allowed = buildAllowedModelSet(cfg.ModelRegionIsolation.CNAllowedModels)
-	policy.allowedPatterns = buildAllowedModelPatterns(cfg.ModelRegionIsolation.CNAllowedModels)
+	policy.configureAllowedModels(cfg.ModelRegionIsolation.CNAllowedModels)
 
 	path := strings.TrimSpace(cfg.ModelRegionIsolation.GeoIPMMDBPath)
 	if path == "" {
@@ -52,6 +50,21 @@ func NewModelRegionPolicy(cfg *config.Config) *ModelRegionPolicy {
 	}
 	policy.reader = reader
 	return policy
+}
+
+func NewModelRegionFilterPolicy(cfg *config.Config) *ModelRegionPolicy {
+	policy := &ModelRegionPolicy{}
+	if cfg == nil || !cfg.ModelRegionIsolation.Enabled {
+		return policy
+	}
+	policy.configureAllowedModels(cfg.ModelRegionIsolation.CNAllowedModels)
+	return policy
+}
+
+func (p *ModelRegionPolicy) configureAllowedModels(models []string) {
+	p.enabled = true
+	p.allowed = buildAllowedModelSet(models)
+	p.allowedPatterns = buildAllowedModelPatterns(models)
 }
 
 func buildAllowedModelSet(models []string) map[string]struct{} {
