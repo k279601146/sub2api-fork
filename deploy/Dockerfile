@@ -28,7 +28,7 @@ RUN npm install -g pnpm@${PNPM_VERSION} --registry=https://registry.npmmirror.co
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --package-import-method=copy
 
 # Copy frontend source and build
 COPY frontend/ ./

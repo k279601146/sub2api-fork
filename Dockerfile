@@ -33,7 +33,7 @@ RUN npm install -g pnpm@${PNPM_VERSION} --registry=https://registry.npmmirror.co
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc frontend/pnpm-workspace.yaml ./
 # Cache the pnpm store to avoid a full dependency download on every build.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --package-import-method=copy
 
 # Copy frontend source and build
 COPY frontend/ ./
