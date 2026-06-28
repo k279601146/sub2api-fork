@@ -1,6 +1,8 @@
 param(
     [string]$Image = "ccr.ccs.tencentyun.com/sub2apifork/sub2apidepliy",
     [string]$Tag = "",
+    [string]$Username = $(if ($env:TCR_USERNAME) { $env:TCR_USERNAME } else { "100009512456" }),
+    [string]$Password = $env:TCR_PASSWORD,
     [switch]$NoLatest,
     [switch]$SkipLogin
 )
@@ -21,6 +23,18 @@ function Require-Command {
     }
 }
 
+function Invoke-Native {
+    param(
+        [string]$Command,
+        [string[]]$Arguments
+    )
+
+    & $Command @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Command failed with exit code $LASTEXITCODE"
+    }
+}
+
 Require-Command "git"
 Require-Command "docker"
 Require-Value "Image" $Image
@@ -36,25 +50,38 @@ try {
     $Commit = (git rev-parse --short HEAD).Trim()
     $Date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
+    Write-Host "Checking Docker daemon ..."
+    Invoke-Native "docker" @("info")
+
     if (-not $SkipLogin) {
         Write-Host "Logging in to $Registry ..."
-        docker login $Registry
+        if ([string]::IsNullOrWhiteSpace($Password)) {
+            Invoke-Native "docker" @("login", $Registry, "--username", $Username)
+        }
+        else {
+            $Password | docker login $Registry --username $Username --password-stdin
+            if ($LASTEXITCODE -ne 0) {
+                throw "docker failed with exit code $LASTEXITCODE"
+            }
+        }
     }
 
-    Write-Host "Building $Image:$Tag ..."
-    docker build `
-        --build-arg COMMIT=$Commit `
-        --build-arg DATE=$Date `
-        -t "$Image:$Tag" `
-        .
+    Write-Host "Building ${Image}:${Tag} ..."
+    Invoke-Native "docker" @(
+        "build",
+        "--build-arg", "COMMIT=$Commit",
+        "--build-arg", "DATE=$Date",
+        "-t", "${Image}:${Tag}",
+        "."
+    )
 
-    Write-Host "Pushing $Image:$Tag ..."
-    docker push "$Image:$Tag"
+    Write-Host "Pushing ${Image}:${Tag} ..."
+    Invoke-Native "docker" @("push", "${Image}:${Tag}")
 
     if (-not $NoLatest) {
-        Write-Host "Tagging and pushing $Image:latest ..."
-        docker tag "$Image:$Tag" "$Image:latest"
-        docker push "$Image:latest"
+        Write-Host "Tagging and pushing ${Image}:latest ..."
+        Invoke-Native "docker" @("tag", "${Image}:${Tag}", "${Image}:latest")
+        Invoke-Native "docker" @("push", "${Image}:latest")
     }
 
     Write-Host ""
