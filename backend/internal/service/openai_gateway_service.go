@@ -1830,8 +1830,32 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
-		return accounts, err
+		if err != nil || len(accounts) > 0 || s.accountRepo == nil {
+			return accounts, err
+		}
+		accounts, err = s.listSchedulableOpenAIAccountsFromDB(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if len(accounts) > 0 {
+			slog.Info("openai_scheduler_empty_snapshot_db_fallback",
+				"group_id", derefGroupID(groupID),
+				"candidate_count", len(accounts),
+			)
+			if s.schedulerSnapshot.cache != nil {
+				mode := s.schedulerSnapshot.resolveMode(PlatformOpenAI, false)
+				bucket := s.schedulerSnapshot.bucketFor(groupID, PlatformOpenAI, mode)
+				if cacheErr := s.schedulerSnapshot.cache.SetSnapshot(ctx, bucket, accounts); cacheErr != nil {
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAIScheduler] empty snapshot DB fallback cache write failed: bucket=%s err=%v", bucket.String(), cacheErr)
+				}
+			}
+		}
+		return accounts, nil
 	}
+	return s.listSchedulableOpenAIAccountsFromDB(ctx, groupID)
+}
+
+func (s *OpenAIGatewayService) listSchedulableOpenAIAccountsFromDB(ctx context.Context, groupID *int64) ([]Account, error) {
 	var accounts []Account
 	var err error
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {

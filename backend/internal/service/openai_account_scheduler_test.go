@@ -17,6 +17,8 @@ type openAISnapshotCacheStub struct {
 	SchedulerCache
 	snapshotAccounts []*Account
 	accountsByID     map[int64]*Account
+	snapshotHit      bool
+	setSnapshotCalls int
 }
 
 type schedulerTestOpenAIAccountRepo struct {
@@ -217,7 +219,7 @@ func newOpenAIAdvancedSchedulerRateLimitService(enabled string) *RateLimitServic
 
 func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
 	if len(s.snapshotAccounts) == 0 {
-		return nil, false, nil
+		return nil, s.snapshotHit, nil
 	}
 	out := make([]*Account, 0, len(s.snapshotAccounts))
 	for _, account := range s.snapshotAccounts {
@@ -228,6 +230,17 @@ func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket Schedu
 		out = append(out, &cloned)
 	}
 	return out, true, nil
+}
+
+func (s *openAISnapshotCacheStub) SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+	s.setSnapshotCalls++
+	s.snapshotHit = true
+	s.snapshotAccounts = make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		cloned := accounts[i]
+		s.snapshotAccounts = append(s.snapshotAccounts, &cloned)
+	}
+	return nil
 }
 
 func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
@@ -576,6 +589,39 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_DBRuntimeReche
 	require.NoError(t, err)
 	require.NotNil(t, account)
 	require.Equal(t, int64(34002), account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_EmptySnapshotFallsBackToDB(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10105)
+	account := Account{
+		ID:          35001,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+	}
+	snapshotCache := &openAISnapshotCacheStub{snapshotHit: true}
+	accountRepo := schedulerTestOpenAIAccountRepo{accounts: []Account{account}}
+	snapshotService := &SchedulerSnapshotService{cache: snapshotCache, accountRepo: accountRepo}
+	svc := &OpenAIGatewayService{
+		accountRepo:        accountRepo,
+		cfg:                &config.Config{},
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		schedulerSnapshot:  snapshotService,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(35001), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, 1, decision.CandidateCount)
+	require.Equal(t, 1, snapshotCache.setSnapshotCalls)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(t *testing.T) {
