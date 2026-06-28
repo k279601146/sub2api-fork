@@ -16,6 +16,9 @@ fi
 
 # 兜底默认分支
 BRANCH="${BRANCH:-idehotai}"
+# 部署脚本运行在服务器本机，源码目录可能已经手动更新到 GitHub 最新 commit；
+# 默认仍重新构建镜像，避免“源码已最新”被误判为“镜像已最新”。
+FORCE_DOCKER_BUILD="${FORCE_DOCKER_BUILD:-true}"
 
 if [ -z "${GITHUB_TOKEN}" ]; then
   echo "[ERROR] 未在部署目录的 .env 中配置 GITHUB_TOKEN！请先配置该变量。"
@@ -53,7 +56,7 @@ git fetch origin "$BRANCH"
 REMOTE_COMMIT=$(git rev-parse "origin/$BRANCH")
 
 if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ]; then
-  echo "源码已是最新版本，跳过拉取源码与镜像构建: ${CURRENT_COMMIT:0:12}"
+  echo "源码已是最新版本，跳过拉取源码: ${CURRENT_COMMIT:0:12}"
 else
   echo "发现新版本，更新源码: $CURRENT_COMMIT -> $REMOTE_COMMIT"
   git reset --hard "origin/$BRANCH"
@@ -65,13 +68,11 @@ NEW_COMMIT=$(git rev-parse --short HEAD)
 echo "当前版本 Commit: $NEW_COMMIT"
 
 echo "=== [3/5] 同步部署文件并更新配置 ==="
-if [ "$SOURCE_CHANGED" = true ] || [ ! -f "$DEPLOY_DIR/docker-compose.yml" ]; then
-  install -m 0644 "$SRC_DIR/deploy/docker-compose.yml" "$DEPLOY_DIR/docker-compose.yml"
-  install -m 0644 "$SRC_DIR/deploy/.env.example" "$DEPLOY_DIR/.env.example"
-  install -m 0755 "$SRC_DIR/deploy/docker-entrypoint.sh" "$DEPLOY_DIR/docker-entrypoint.sh"
-else
-  echo "源码未变更，保留现有部署文件。"
-fi
+install -m 0644 "$SRC_DIR/deploy/docker-compose.yml" "$DEPLOY_DIR/docker-compose.yml"
+install -m 0644 "$SRC_DIR/deploy/.env.example" "$DEPLOY_DIR/.env.example"
+install -m 0755 "$SRC_DIR/deploy/docker-entrypoint.sh" "$DEPLOY_DIR/docker-entrypoint.sh"
+install -m 0755 "$SRC_DIR/deploy/update.sh" "$DEPLOY_DIR/update.sh"
+echo "已从源码目录同步部署文件。"
 mkdir -p "$DEPLOY_DIR/data"
 if [ "$SOURCE_CHANGED" = true ] || [ ! -f "$DEPLOY_DIR/data/GeoLite2-Country.mmdb" ]; then
   if [ -f "$SRC_DIR/backend/resources/GeoLite2-Country.mmdb" ]; then
@@ -107,14 +108,16 @@ else
 fi
 
 echo "=== [4/5] 现场构建新版本 Docker 镜像 ==="
-if [ "$SOURCE_CHANGED" = true ]; then
-  echo "源码有变动，先停止容器释放内存，再构建镜像。"
+IMAGE_NAME="sub2api-custom:${NEW_COMMIT}"
+if [ "$SOURCE_CHANGED" = true ] || [ "$FORCE_DOCKER_BUILD" = "true" ] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+  echo "准备构建当前源码对应的 Docker 镜像: $IMAGE_NAME"
+  echo "先停止容器释放内存，再构建镜像。"
   docker compose stop sub2api redis >/dev/null 2>&1 || true
   echo "当前 Docker Compose 数据库连接配置："
   docker compose config | grep -E "DATABASE_(HOST|PORT|USER|DBNAME|SSLMODE):" || true
   docker compose build sub2api
 else
-  echo "源码未变更，跳过 Docker 镜像构建。"
+  echo "源码未变更且本地镜像已存在，跳过 Docker 镜像构建。"
 fi
 
 echo "=== [5/5] 重建并运行容器 ==="
