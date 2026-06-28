@@ -75,7 +75,7 @@ if [ ! -f .env ]; then
     cp .env.example .env
     chmod 600 .env
   fi
-  echo "[ERROR] $DEPLOY_DIR/.env is missing. Configure it first, especially SUB2API_IMAGE and secrets."
+  echo "[ERROR] $DEPLOY_DIR/.env is missing. Configure it first, especially APP_TAG and secrets."
   exit 1
 fi
 
@@ -86,16 +86,12 @@ if [ -n "$APP_TAG_OVERRIDE" ]; then
   export APP_TAG="$APP_TAG_OVERRIDE"
 fi
 
-if [ -z "${SUB2API_IMAGE:-}" ] || [ "$SUB2API_IMAGE" = "ccr.ccs.tencentyun.com/your-namespace/sub2api" ]; then
-  echo "[ERROR] SUB2API_IMAGE must point to your Tencent Cloud TCR image."
-  echo "        Example: SUB2API_IMAGE=ccr.ccs.tencentyun.com/my-namespace/sub2api"
-  exit 1
-fi
-
 if [ -z "${APP_TAG:-}" ]; then
   echo "[ERROR] APP_TAG is empty. Pass a tag as the first argument or set APP_TAG in .env."
   exit 1
 fi
+
+SUB2API_IMAGE="ccr.ccs.tencentyun.com/sub2apifork/sub2apidepliy"
 
 echo "=== [1/5] Backup current runtime data and config ==="
 mkdir -p "$BACKUP_DIR"

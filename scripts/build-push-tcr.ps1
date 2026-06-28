@@ -1,7 +1,5 @@
 param(
-    [string]$Registry = $env:TCR_REGISTRY,
-    [string]$Namespace = $env:TCR_NAMESPACE,
-    [string]$ImageName = "sub2api",
+    [string]$Image = "ccr.ccs.tencentyun.com/sub2apifork/sub2apidepliy",
     [string]$Tag = "",
     [switch]$NoLatest,
     [switch]$SkipLogin
@@ -25,8 +23,7 @@ function Require-Command {
 
 Require-Command "git"
 Require-Command "docker"
-Require-Value "Registry" $Registry
-Require-Value "Namespace" $Namespace
+Require-Value "Image" $Image
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $RepoRoot
@@ -35,7 +32,7 @@ try {
         $Tag = (git rev-parse --short HEAD).Trim()
     }
 
-    $Image = "$Registry/$Namespace/$ImageName"
+    $Registry = ($Image -split "/")[0]
     $Commit = (git rev-parse --short HEAD).Trim()
     $Date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 

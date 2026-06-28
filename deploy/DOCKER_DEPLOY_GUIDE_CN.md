@@ -26,24 +26,28 @@ chmod 600 .env
 chmod +x update.sh docker-entrypoint.sh
 ```
 
-## 2. 必填镜像配置
+## 2. 镜像配置
 
-编辑服务器 `.env`：
+镜像地址已固定写入 `docker-compose.yml` 和脚本：
+
+```text
+ccr.ccs.tencentyun.com/sub2apifork/sub2apidepliy
+```
+
+服务器 `.env` 只需要保留 tag 和生产配置：
 
 ```ini
-SUB2API_IMAGE=ccr.ccs.tencentyun.com/你的命名空间/sub2api
 APP_TAG=latest
 ```
 
-其他数据库、Redis、JWT、管理员账号等生产配置继续保留在 `.env` 中。
+数据库、Redis、JWT、管理员账号等生产配置继续保留在 `.env` 中。
 
 ## 3. 本地构建并推送
 
 Windows PowerShell 中执行：
 
 ```powershell
-$env:TCR_REGISTRY = "ccr.ccs.tencentyun.com"
-$env:TCR_NAMESPACE = "你的命名空间"
+cd D:\workspace\sub2api-fork
 .\scripts\build-push-tcr.ps1
 ```
 
@@ -66,7 +70,7 @@ cd /www/wwwroot/sub2api-deploy/deploy
 
 1. 备份 `.env`、`data/`、`redis_data/`。
 2. 确保运行目录存在。
-3. 拉取 `${SUB2API_IMAGE}:${APP_TAG}` 和 Redis 镜像。
+3. 拉取 `ccr.ccs.tencentyun.com/sub2apifork/sub2apidepliy:${APP_TAG}` 和 Redis 镜像。
 4. 重建 `sub2api`、`redis` 容器。
 5. 检查 `/health`。
 

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   sub2api:
-    image: ${SUB2API_IMAGE:-ccr.ccs.tencentyun.com/your-namespace/sub2api}:${APP_TAG:-latest}
+    image: ccr.ccs.tencentyun.com/sub2apifork/sub2apidepliy:${APP_TAG:-latest}
     container_name: sub2api
     restart: unless-stopped
     ulimits:
