@@ -645,6 +645,51 @@ func TestGetAvailableModels_CacheKeyIncludesRegionScope(t *testing.T) {
 	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
 }
 
+func TestGetAvailableModels_CNAllowlistChecksMappedModel(t *testing.T) {
+	resetGatewayHotpathStatsForTest()
+
+	groupID := int64(9)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: PlatformAnthropic,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"deepseek-v4-flash": "deepseek-v4-flash",
+							"gpt-5.4":           "glm-5.2",
+							"gpt-5.5":           "sensenova-u1-fast",
+							"claude-sonnet-4-6": "claude-sonnet-4-6",
+						},
+					},
+				},
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+		modelRegionPolicy: &ModelRegionPolicy{
+			enabled: true,
+			allowed: buildAllowedModelSet([]string{
+				"deepseek",
+				"glm",
+				"sensenova",
+			}),
+			allowedPatterns: buildAllowedModelPatterns([]string{
+				"deepseek",
+				"glm",
+				"sensenova",
+			}),
+		},
+	}
+
+	models := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic, ModelRegionScopeCN)
+	require.Equal(t, []string{"deepseek-v4-flash", "gpt-5.4", "gpt-5.5"}, models)
+}
+
 func TestGatewayHotpathHelpers_CacheTTLAndStickyContext(t *testing.T) {
 	t.Run("resolve_user_group_rate_cache_ttl", func(t *testing.T) {
 		require.Equal(t, defaultUserGroupRateCacheTTL, resolveUserGroupRateCacheTTL(nil))

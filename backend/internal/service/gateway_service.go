@@ -9355,8 +9355,8 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 	return normalized, nil
 }
 
-// GetAvailableModels returns the list of models available for a group
-// It aggregates model_mapping keys from all schedulable accounts in the group
+// GetAvailableModels returns the list of request model IDs available for a group.
+// It aggregates model_mapping keys from all schedulable accounts in the group.
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string, regionScope ...string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform, regionScope...)
 	if s.modelsListCache != nil {
@@ -9393,7 +9393,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		accounts = filtered
 	}
 
-	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
 	hasAnyMapping := false
 
@@ -9401,13 +9400,14 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		mapping := acc.GetModelMapping()
 		if len(mapping) > 0 {
 			hasAnyMapping = true
-			for model := range mapping {
-				modelSet[model] = struct{}{}
+			for requestedModel, mappedModel := range mapping {
+				if s.isAvailableModelAllowedForRegion(regionScope, requestedModel, mappedModel) {
+					modelSet[requestedModel] = struct{}{}
+				}
 			}
 		}
 	}
 
-	// If no account has model_mapping, return nil (use default)
 	if !hasAnyMapping {
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
@@ -9422,7 +9422,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		models = append(models, model)
 	}
 	sort.Strings(models)
-	models = s.filterAvailableModelsByRegion(regionScope, models)
 
 	if s.modelsListCache != nil {
 		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
@@ -9431,11 +9430,15 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	return cloneStringSlice(models)
 }
 
-func (s *GatewayService) filterAvailableModelsByRegion(regionScope []string, models []string) []string {
+func (s *GatewayService) isAvailableModelAllowedForRegion(regionScope []string, requestedModel string, mappedModel string) bool {
 	if s == nil || s.modelRegionPolicy == nil || len(regionScope) == 0 {
-		return models
+		return true
 	}
-	return s.modelRegionPolicy.FilterModels(regionScope[0], models)
+	scope := regionScope[0]
+	if s.modelRegionPolicy.IsModelAllowed(scope, requestedModel) {
+		return true
+	}
+	return mappedModel != "" && mappedModel != requestedModel && s.modelRegionPolicy.IsModelAllowed(scope, mappedModel)
 }
 
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {
