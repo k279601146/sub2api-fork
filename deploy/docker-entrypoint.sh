@@ -6,6 +6,11 @@ set -e
 # preventing the non-root sub2api user from writing files.
 if [ "$(id -u)" = "0" ]; then
     mkdir -p /app/data
+    if [ ! -f /app/data/GeoLite2-Country.mmdb ] && [ -f /app/resources/GeoLite2-Country.mmdb ]; then
+        tmp_geoip="/app/data/.GeoLite2-Country.mmdb.tmp.$$"
+        cp /app/resources/GeoLite2-Country.mmdb "$tmp_geoip"
+        mv "$tmp_geoip" /app/data/GeoLite2-Country.mmdb
+    fi
     # Use || true to avoid failure on read-only mounted files (e.g. config.yaml:ro)
     chown -R sub2api:sub2api /app/data 2>/dev/null || true
     # Re-invoke this script as sub2api so the flag-detection below

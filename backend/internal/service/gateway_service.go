@@ -4551,7 +4551,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				"type": "error",
 				"error": gin.H{
 					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"message": LocalizeGatewayErrorMessage(http.StatusBadGateway, "upstream_error", "Upstream request failed"),
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -5041,7 +5041,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				"type": "error",
 				"error": gin.H{
 					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"message": LocalizeGatewayErrorMessage(http.StatusBadGateway, "upstream_error", "Upstream request failed"),
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -5756,7 +5756,7 @@ func (s *GatewayService) executeBedrockUpstream(
 				"type": "error",
 				"error": gin.H{
 					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"message": LocalizeGatewayErrorMessage(http.StatusBadGateway, "upstream_error", "Upstream request failed"),
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -6939,13 +6939,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-		c.JSON(status, gin.H{
-			"type": "error",
-			"error": gin.H{
-				"type":    errType,
-				"message": errMsg,
-			},
-		})
+			c.JSON(status, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    errType,
+					"message": LocalizeGatewayErrorMessage(status, errType, errMsg),
+				},
+			})
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -7003,7 +7003,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
-			"message": errMsg,
+			"message": LocalizeGatewayErrorMessage(statusCode, errType, errMsg),
 		},
 	})
 
@@ -7101,7 +7101,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 			"type": "error",
 			"error": gin.H{
 				"type":    errType,
-				"message": errMsg,
+				"message": LocalizeGatewayErrorMessage(status, errType, errMsg),
 			},
 		})
 
@@ -7120,7 +7120,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		"type": "error",
 		"error": gin.H{
 			"type":    "upstream_error",
-			"message": "Upstream request failed after retries",
+			"message": LocalizeGatewayErrorMessage(http.StatusBadGateway, "upstream_error", "Upstream request failed after retries"),
 		},
 	})
 

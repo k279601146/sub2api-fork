@@ -158,10 +158,11 @@ func allowGoogleQueryKey(path string) bool {
 }
 
 func abortWithGoogleError(c *gin.Context, status int, message string) {
+	localizedMessage := service.LocalizeGatewayErrorMessage(status, "", message)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    status,
-			"message": message,
+			"message": localizedMessage,
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
 	})

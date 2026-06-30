@@ -2774,7 +2774,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			c.JSON(http.StatusBadGateway, gin.H{
 				"error": gin.H{
 					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"message": LocalizeGatewayErrorMessage(http.StatusBadGateway, "upstream_error", "Upstream request failed"),
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -3068,7 +3068,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
 				"type":    "upstream_error",
-				"message": "Upstream request failed",
+				"message": LocalizeGatewayErrorMessage(http.StatusBadGateway, "upstream_error", "Upstream request failed"),
 			},
 		})
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -4024,7 +4024,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		c.JSON(status, gin.H{
 			"error": gin.H{
 				"type":    errType,
-				"message": errMsg,
+				"message": LocalizeGatewayErrorMessage(status, errType, errMsg),
 			},
 		})
 		if upstreamMsg == "" {
@@ -4051,7 +4051,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"type":    "upstream_error",
-				"message": "Upstream gateway error",
+				"message": LocalizeGatewayErrorMessage(http.StatusInternalServerError, "upstream_error", "Upstream gateway error"),
 			},
 		})
 		if upstreamMsg == "" {
@@ -4117,7 +4117,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"type":    errType,
-			"message": errMsg,
+			"message": LocalizeGatewayErrorMessage(statusCode, errType, errMsg),
 		},
 	})
 

@@ -71,7 +71,7 @@ func NewErrorResponse(code, message string) ErrorResponse {
 
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
-	c.JSON(statusCode, NewErrorResponse(code, message))
+	c.JSON(statusCode, NewErrorResponse(code, service.LocalizeGatewayErrorMessage(statusCode, code, message)))
 	c.Abort()
 }
 
