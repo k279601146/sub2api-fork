@@ -3488,7 +3488,7 @@ func (r *usageLogRepository) GetUsageUnitsWithFilters(ctx context.Context, filte
 		WITH per_request AS (
 			SELECT
 				CASE
-					WHEN billing_mode = '%s' THEN COALESCE(total_cost, 0)
+					WHEN billing_mode = '%s' THEN COALESCE(total_cost, 0) - COALESCE(actual_cost, 0)
 					ELSE (
 						COALESCE(input_tokens, 0)::float8 / 1000
 						+ COALESCE(cache_creation_tokens, 0)::float8 / 1000

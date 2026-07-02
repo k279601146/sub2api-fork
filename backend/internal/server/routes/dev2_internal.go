@@ -105,6 +105,11 @@ type dev2UsageRefundRequest struct {
 	Units          float64 `json:"units"`
 	Reason         string  `json:"reason"`
 	UsageRecordIDs []int64 `json:"usage_record_ids"`
+	UsageRecords   []struct {
+		ID         int64   `json:"id"`
+		Units      float64 `json:"units"`
+		ActualCost float64 `json:"actual_cost"`
+	} `json:"usage_records"`
 }
 
 type dev2UsageRecordResponse struct {
@@ -489,7 +494,17 @@ func dev2BillingUsageRefund(h *handler.Handlers, cfg *config.Config) gin.Handler
 
 		units := math.Max(req.Units, 0)
 		credit := 0.0
-		if len(req.UsageRecordIDs) > 0 {
+		if len(req.UsageRecords) > 0 {
+			units = 0
+			for _, item := range req.UsageRecords {
+				if item.Units > 0 {
+					units += item.Units
+				}
+				if item.ActualCost > 0 {
+					credit += item.ActualCost
+				}
+			}
+		} else if len(req.UsageRecordIDs) > 0 {
 			originals, err := client.UsageLog.Query().
 				Where(
 					usagelog.IDIn(req.UsageRecordIDs...),
@@ -525,7 +540,7 @@ func dev2BillingUsageRefund(h *handler.Handlers, cfg *config.Config) gin.Handler
 			RequestID:      requestID,
 			Model:          "dev2-refund",
 			TotalCost:      -units,
-			ActualCost:     0,
+			ActualCost:     -credit,
 			RateMultiplier: 1,
 			BillingMode:    service.UsageBillingModeDev2Units,
 			Stream:         true,

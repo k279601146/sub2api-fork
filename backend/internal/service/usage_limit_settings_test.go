@@ -93,26 +93,58 @@ func TestApplyUsageWindows_UsesConfiguredLimits(t *testing.T) {
 	require.Equal(t, 20.0, stats.WeeklyWindow.UsedPercent)
 }
 
-func TestCalculateDev2RewardBalanceCost_UsesWindowBeforeBalance(t *testing.T) {
-	got := calculateDev2RewardBalanceCost(20, 100, 200, 700, 30, 500)
+func TestApplyUsageWindows_CapsCurrentWindowByWeeklyRemaining(t *testing.T) {
+	stats := &usagestats.UserDashboardStats{}
+	windowReset := time.Date(2026, 5, 29, 5, 0, 0, 0, time.UTC)
+	weeklyReset := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
+	applyUsageWindows(stats, 20, 695, windowReset, weeklyReset, 100, 700)
+
+	require.NotNil(t, stats.CurrentWindow)
+	require.Equal(t, 80.0, stats.CurrentWindow.LimitUnits-stats.CurrentWindow.UsedUnits)
+	require.Equal(t, 5.0, stats.CurrentWindow.RemainingUnits)
+	require.Equal(t, windowReset.Format(usageWindowTimeLayout), stats.CurrentWindow.ResetsAt)
+	require.NotNil(t, stats.WeeklyWindow)
+	require.Equal(t, 5.0, stats.WeeklyWindow.RemainingUnits)
+}
+
+func TestApplyUsageWindows_UsesWeeklyResetWhenWeeklyLimitIsFull(t *testing.T) {
+	stats := &usagestats.UserDashboardStats{}
+	windowReset := time.Date(2026, 5, 29, 5, 0, 0, 0, time.UTC)
+	weeklyReset := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	applyUsageWindows(stats, 0, 700, windowReset, weeklyReset, 100, 700)
+
+	require.NotNil(t, stats.CurrentWindow)
+	require.Equal(t, 0.0, stats.CurrentWindow.RemainingUnits)
+	require.Equal(t, weeklyReset.Format(usageWindowTimeLayout), stats.CurrentWindow.ResetsAt)
+	require.NotEqual(t, windowReset.Format(usageWindowTimeLayout), stats.CurrentWindow.ResetsAt)
+}
+
+func TestCalculateDev2RewardBalanceCost_UsesWindowBeforeBalance(t *testing.T) {
+	got, ok := calculateDev2RewardBalanceCost(20, 100, 200, 700, 30, 500)
+
+	require.True(t, ok)
 	require.Equal(t, 0.0, got)
 }
 
 func TestCalculateDev2RewardBalanceCost_ChargesOnlyOverage(t *testing.T) {
-	got := calculateDev2RewardBalanceCost(90, 100, 200, 700, 30, 500)
+	got, ok := calculateDev2RewardBalanceCost(90, 100, 200, 700, 30, 500)
 
+	require.True(t, ok)
 	require.Equal(t, 20.0, got)
 }
 
 func TestCalculateDev2RewardBalanceCost_UsesStricterWeeklyWindow(t *testing.T) {
-	got := calculateDev2RewardBalanceCost(20, 100, 690, 700, 30, 500)
+	got, ok := calculateDev2RewardBalanceCost(20, 100, 690, 700, 30, 500)
 
+	require.True(t, ok)
 	require.Equal(t, 20.0, got)
 }
 
-func TestCalculateDev2RewardBalanceCost_DoesNotOverdraftBalance(t *testing.T) {
-	got := calculateDev2RewardBalanceCost(100, 100, 700, 700, 30, 12.345)
+func TestCalculateDev2RewardBalanceCost_RejectsInsufficientBalance(t *testing.T) {
+	got, ok := calculateDev2RewardBalanceCost(100, 100, 700, 700, 30, 12.345)
 
-	require.Equal(t, 12.35, got)
+	require.False(t, ok)
+	require.Equal(t, 0.0, got)
 }

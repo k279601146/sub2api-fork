@@ -109,7 +109,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
-	if strings.EqualFold(strings.TrimSpace(req.BillingMode), UsageBillingModeDev2Units) {
+	if strings.EqualFold(strings.TrimSpace(req.BillingMode), UsageBillingModeDev2Units) && req.TotalCost > 0 {
 		req.ActualCost, err = s.dev2RewardBalanceCost(txCtx, req.UserID, req.TotalCost, user.Balance)
 		if err != nil {
 			return nil, err
@@ -190,7 +190,11 @@ func (s *UsageService) dev2RewardBalanceCost(ctx context.Context, userID int64, 
 		return 0, fmt.Errorf("get weekly usage window for dev2 balance cost: %w", err)
 	}
 	windowLimit, weeklyLimit := s.usageLimitSettings(ctx)
-	return calculateDev2RewardBalanceCost(current, windowLimit, weekly, weeklyLimit, units, balance), nil
+	cost, ok := calculateDev2RewardBalanceCost(current, windowLimit, weekly, weeklyLimit, units, balance)
+	if !ok {
+		return 0, ErrInsufficientBalance
+	}
+	return cost, nil
 }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {
@@ -447,12 +451,27 @@ func applyUsageWindows(stats *usagestats.UserDashboardStats, currentUnits, weekl
 	}
 	stats.Plan = defaultUsagePlan
 	stats.PlanType = defaultUsagePlanType
-	stats.CurrentWindow = buildUsageLimitWindow(currentUnits, windowLimit, windowReset)
+	stats.CurrentWindow = buildCurrentUsageLimitWindow(currentUnits, windowLimit, windowReset, weeklyUnits, weeklyLimit, weeklyReset)
 	stats.WeeklyWindow = buildUsageLimitWindow(weeklyUnits, weeklyLimit, weeklyReset)
+}
+
+func buildCurrentUsageLimitWindow(currentUsed, currentLimit float64, currentReset time.Time, weeklyUsed, weeklyLimit float64, weeklyReset time.Time) *usagestats.UsageLimitWindow {
+	currentRemaining := math.Max(currentLimit-currentUsed, 0)
+	weeklyRemaining := math.Max(weeklyLimit-weeklyUsed, 0)
+	remaining := math.Min(currentRemaining, weeklyRemaining)
+	reset := currentReset
+	if weeklyRemaining <= 0 {
+		reset = weeklyReset
+	}
+	return buildUsageLimitWindowWithRemaining(currentUsed, currentLimit, remaining, reset)
 }
 
 func buildUsageLimitWindow(used, limit float64, reset time.Time) *usagestats.UsageLimitWindow {
 	remaining := math.Max(limit-used, 0)
+	return buildUsageLimitWindowWithRemaining(used, limit, remaining, reset)
+}
+
+func buildUsageLimitWindowWithRemaining(used, limit, remaining float64, reset time.Time) *usagestats.UsageLimitWindow {
 	percent := 0.0
 	if limit > 0 {
 		percent = math.Min(math.Max(used/limit*100, 0), 100)
@@ -460,21 +479,28 @@ func buildUsageLimitWindow(used, limit float64, reset time.Time) *usagestats.Usa
 	return &usagestats.UsageLimitWindow{
 		UsedUnits:      roundUsageUnits(used),
 		LimitUnits:     roundUsageUnits(limit),
-		RemainingUnits: roundUsageUnits(remaining),
+		RemainingUnits: roundUsageUnits(math.Max(remaining, 0)),
 		UsedPercent:    roundUsageUnits(percent),
 		ResetsAt:       reset.UTC().Format(usageWindowTimeLayout),
 	}
 }
 
-func calculateDev2RewardBalanceCost(currentUsed, currentLimit, weeklyUsed, weeklyLimit, units, balance float64) float64 {
-	if units <= 0 || balance <= 0 {
-		return 0
+func calculateDev2RewardBalanceCost(currentUsed, currentLimit, weeklyUsed, weeklyLimit, units, balance float64) (float64, bool) {
+	if units <= 0 {
+		return 0, true
 	}
 	currentRemaining := math.Max(currentLimit-currentUsed, 0)
 	weeklyRemaining := math.Max(weeklyLimit-weeklyUsed, 0)
 	freeRemaining := math.Min(currentRemaining, weeklyRemaining)
 	overage := math.Max(units-freeRemaining, 0)
-	return roundUsageUnits(math.Min(overage, balance))
+	overage = roundUsageUnits(overage)
+	if overage <= 0 {
+		return 0, true
+	}
+	if balance < overage {
+		return 0, false
+	}
+	return overage, true
 }
 
 func usageFiveHourWindow(now time.Time) (time.Time, time.Time) {
