@@ -51,7 +51,13 @@ func GetTrustedClientIP(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	return normalizeIP(c.ClientIP())
+	clientIP := normalizeIP(c.ClientIP())
+	if isPrivateIP(clientIP) {
+		if cfIP := normalizePublicHeaderIP(c.GetHeader("CF-Connecting-IP")); cfIP != "" {
+			return cfIP
+		}
+	}
+	return clientIP
 }
 
 // normalizeIP 规范化 IP 地址，去除端口号和空格。
@@ -60,6 +66,15 @@ func normalizeIP(ip string) string {
 	// 移除端口号（如 "192.168.1.1:8080" -> "192.168.1.1"）
 	if host, _, err := net.SplitHostPort(ip); err == nil {
 		return host
+	}
+	return ip
+}
+
+func normalizePublicHeaderIP(ip string) string {
+	ip = normalizeIP(ip)
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil || isPrivateIP(ip) {
+		return ""
 	}
 	return ip
 }

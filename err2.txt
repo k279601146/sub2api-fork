@@ -1,0 +1,4 @@
+2026-07-03T20:29:59.957+0800	WARN	slog	TOTP encryption key auto-generated. Consider setting a fixed key for production.	{"service": "sub2api", "env": "bootstrap"}
+2026-07-03T20:29:59.958+0800	WARN	slog	security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).	{"service": "sub2api", "env": "bootstrap"}
+2026-07-03T20:29:59.964+0800	WARN	slog	logger/slog_handler.go:55	TOTP encryption key auto-generated. Consider setting a fixed key for production.	{"service": "sub2api", "env": "production"}
+2026-07-03T20:29:59.965+0800	WARN	slog	logger/slog_handler.go:55	security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).	{"service": "sub2api", "env": "production"}

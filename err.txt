@@ -1,0 +1,3 @@
+2026-07-03T20:27:58.416+0800	WARN	slog	security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).	{"service": "sub2api", "env": "bootstrap"}
+2026-07-03T20:27:58.424+0800	WARN	slog	logger/slog_handler.go:55	security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).	{"service": "sub2api", "env": "production"}
+2026-07-03T20:28:01.344+0800	WARN	stdlog	sync/once.go:78	Warning: CORS allowed_origins not configured; cross-origin requests will be rejected.	{"service": "sub2api", "env": "production", "legacy_stdlog": true}

@@ -49,6 +49,9 @@ func ProvideRouter(
 	if len(cfg.Server.TrustedProxies) > 0 {
 		if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
 			log.Printf("Failed to set trusted proxies: %v", err)
+			if disableErr := r.SetTrustedProxies(nil); disableErr != nil {
+				log.Printf("Failed to disable trusted proxies after invalid config: %v", disableErr)
+			}
 		}
 	} else {
 		if err := r.SetTrustedProxies(nil); err != nil {

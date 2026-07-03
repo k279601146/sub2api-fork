@@ -78,6 +78,33 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	}
 }
 
+func TestLoadNormalizesServerTrustedProxiesFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SERVER_TRUSTED_PROXIES", "127.0.0.1/8, 172.16.0.0/12,,10.0.0.0/8")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"127.0.0.1/8", "172.16.0.0/12", "10.0.0.0/8"}, cfg.Server.TrustedProxies)
+}
+
+func TestLoadNormalizesServerTrustedProxiesFromConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	dir := t.TempDir()
+	t.Setenv("DATA_DIR", dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
+jwt:
+  secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+server:
+  trusted_proxies:
+    - "127.0.0.1/8, 172.16.0.0/12"
+    - "10.0.0.0/8"
+`), 0600))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"127.0.0.1/8", "172.16.0.0/12", "10.0.0.0/8"}, cfg.Server.TrustedProxies)
+}
+
 func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

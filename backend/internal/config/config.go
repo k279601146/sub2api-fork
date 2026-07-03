@@ -1296,6 +1296,11 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
 	}
+	if rawTrustedProxies := strings.TrimSpace(os.Getenv("SERVER_TRUSTED_PROXIES")); rawTrustedProxies != "" {
+		cfg.Server.TrustedProxies = normalizeDelimitedStringSlice([]string{rawTrustedProxies})
+	} else {
+		cfg.Server.TrustedProxies = normalizeDelimitedStringSlice(cfg.Server.TrustedProxies)
+	}
 	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
@@ -2661,6 +2666,23 @@ func normalizeStringSlice(values []string) []string {
 			continue
 		}
 		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func normalizeDelimitedStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return values
+	}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			normalized = append(normalized, trimmed)
+		}
 	}
 	return normalized
 }
