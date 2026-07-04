@@ -208,13 +208,15 @@ type ResponsesInputItem struct {
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
-	// type=function_call
+	// type=function_call / custom_tool_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
 	ID        string `json:"id,omitempty"`
+	Input     string `json:"input,omitempty"`
 
-	// type=function_call_output
+	// type=function_call_output / custom_tool_call_output
 	Output string `json:"output,omitempty"`
 }
 
@@ -278,10 +280,12 @@ type ResponsesOutput struct {
 	EncryptedContent string             `json:"encrypted_content,omitempty"`
 	Summary          []ResponsesSummary `json:"summary,omitempty"`
 
-	// type=function_call
+	// type=function_call / custom_tool_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 
 	// type=web_search_call
 	Action *WebSearchAction `json:"action,omitempty"`

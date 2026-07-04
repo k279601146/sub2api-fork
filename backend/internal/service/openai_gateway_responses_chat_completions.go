@@ -35,6 +35,7 @@ func (s *OpenAIGatewayService) forwardResponsesAsChatCompletions(
 	clientStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	toolShapes := responsesToolCallShapesFromBody(responsesBody)
 	chatBody, err := responsesBodyToChatCompletionsBody(responsesBody, upstreamModel)
 	if err != nil {
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -130,9 +131,9 @@ func (s *OpenAIGatewayService) forwardResponsesAsChatCompletions(
 
 	var result *OpenAIForwardResult
 	if clientStream {
-		result, err = s.streamChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, startTime)
+		result, err = s.streamChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, startTime, toolShapes)
 	} else {
-		result, err = s.bufferChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, startTime)
+		result, err = s.bufferChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, startTime, toolShapes)
 	}
 	if result != nil {
 		result.ReasoningEffort = extractOpenAIReasoningEffortFromBody(responsesBody, originalModel)
@@ -199,6 +200,14 @@ func responsesToolToChatTool(tool apicompat.ResponsesTool) (apicompat.ChatTool, 
 	if description == "" && tool.Namespace != "" {
 		description = "Dynamic tool in namespace " + tool.Namespace + "."
 	}
+	if strings.EqualFold(strings.TrimSpace(tool.Type), "custom") {
+		parameters = customToolChatParameters()
+		if description == "" {
+			description = "Custom freeform tool. Pass the raw tool input as the input string."
+		} else {
+			description = strings.TrimSpace(description) + "\n\nPass the raw custom tool input as the input string."
+		}
+	}
 
 	fn := &apicompat.ChatFunction{
 		Name:        name,
@@ -207,6 +216,10 @@ func responsesToolToChatTool(tool apicompat.ResponsesTool) (apicompat.ChatTool, 
 		Strict:      tool.Strict,
 	}
 	return apicompat.ChatTool{Type: "function", Function: fn}, true
+}
+
+func customToolChatParameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"input":{"type":"string","description":"Raw input for the custom tool."}},"required":["input"],"additionalProperties":false}`)
 }
 
 func firstNonEmptyRawMessage(values ...json.RawMessage) json.RawMessage {
@@ -264,7 +277,23 @@ func responsesInputItemToChatMessages(item apicompat.ResponsesInputItem) ([]apic
 				},
 			}},
 		}}, nil
+	case "custom_tool_call":
+		args, _ := json.Marshal(map[string]string{"input": item.Input})
+		return []apicompat.ChatMessage{{
+			Role: "assistant",
+			ToolCalls: []apicompat.ChatToolCall{{
+				ID:   item.CallID,
+				Type: "function",
+				Function: apicompat.ChatFunctionCall{
+					Name:      item.Name,
+					Arguments: string(args),
+				},
+			}},
+		}}, nil
 	case "function_call_output":
+		raw, _ := json.Marshal(item.Output)
+		return []apicompat.ChatMessage{{Role: "tool", Content: raw, ToolCallID: item.CallID}}, nil
+	case "custom_tool_call_output":
 		raw, _ := json.Marshal(item.Output)
 		return []apicompat.ChatMessage{{Role: "tool", Content: raw, ToolCallID: item.CallID}}, nil
 	}
@@ -343,8 +372,23 @@ type responsesChatToolCall struct {
 	ItemID    string
 	CallID    string
 	Name      string
+	Namespace string
 	Arguments string
 }
+
+type responsesToolCallKind string
+
+const (
+	responsesToolCallKindFunction responsesToolCallKind = "function"
+	responsesToolCallKindCustom   responsesToolCallKind = "custom"
+)
+
+type responsesToolCallShape struct {
+	Kind      responsesToolCallKind
+	Namespace string
+}
+
+type responsesToolCallShapes map[string]responsesToolCallShape
 
 type responsesChatToolCallState struct {
 	responsesChatToolCall
@@ -365,6 +409,47 @@ type indexedResponsesOutput struct {
 	Item  map[string]any
 }
 
+func responsesToolCallShapesFromBody(body []byte) responsesToolCallShapes {
+	var req apicompat.ResponsesRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil
+	}
+	shapes := make(responsesToolCallShapes)
+	for _, tool := range append(req.Tools, req.DynamicTools...) {
+		name := strings.TrimSpace(tool.Name)
+		if name == "" {
+			continue
+		}
+		kind := responsesToolCallKindFunction
+		if strings.EqualFold(strings.TrimSpace(tool.Type), "custom") {
+			kind = responsesToolCallKindCustom
+		}
+		shapes[name] = responsesToolCallShape{
+			Kind:      kind,
+			Namespace: strings.TrimSpace(tool.Namespace),
+		}
+	}
+	if len(shapes) == 0 {
+		return nil
+	}
+	return shapes
+}
+
+func resolveResponsesToolCallShape(name string, shapes responsesToolCallShapes) responsesToolCallShape {
+	if shapes != nil {
+		if shape, ok := shapes[name]; ok {
+			return shape
+		}
+	}
+	return responsesToolCallShape{Kind: responsesToolCallKindFunction}
+}
+
+func applyResponsesToolCallShape(toolCall responsesChatToolCall, shapes responsesToolCallShapes) responsesChatToolCall {
+	shape := resolveResponsesToolCallShape(toolCall.Name, shapes)
+	toolCall.Namespace = shape.Namespace
+	return toolCall
+}
+
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
@@ -372,6 +457,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
+	toolShapes responsesToolCallShapes,
 ) (*OpenAIForwardResult, error) {
 	requestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	responseID := "resp_" + randomHexID(12)
@@ -510,17 +596,11 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			return
 		}
 		state.Started = true
+		state.responsesChatToolCall = applyResponsesToolCallShape(state.responsesChatToolCall, toolShapes)
 		writeIfConnected(map[string]any{
 			"type":         "response.output_item.added",
 			"output_index": state.OutputIndex,
-			"item": map[string]any{
-				"type":      "function_call",
-				"id":        state.ItemID,
-				"call_id":   state.CallID,
-				"name":      state.Name,
-				"arguments": "",
-				"status":    "in_progress",
-			},
+			"item":         chatToolCallOutputItem(state.responsesChatToolCall, "in_progress", toolShapes),
 		})
 	}
 	for scanner.Scan() {
@@ -592,14 +672,16 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 					state.Args.WriteString(argsDelta)
 					state.Arguments = state.Args.String()
 					ensureToolCallStarted(state)
-					writeIfConnected(map[string]any{
-						"type":         "response.function_call_arguments.delta",
-						"item_id":      state.ItemID,
-						"output_index": state.OutputIndex,
-						"call_id":      state.CallID,
-						"name":         state.Name,
-						"delta":        argsDelta,
-					})
+					if resolveResponsesToolCallShape(state.Name, toolShapes).Kind != responsesToolCallKindCustom {
+						writeIfConnected(map[string]any{
+							"type":         "response.function_call_arguments.delta",
+							"item_id":      state.ItemID,
+							"output_index": state.OutputIndex,
+							"call_id":      state.CallID,
+							"name":         state.Name,
+							"delta":        argsDelta,
+						})
+					}
 				}
 			}
 			legacyFunctionCall := choice.Get("delta.function_call")
@@ -615,14 +697,16 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 					state.Args.WriteString(argsDelta)
 					state.Arguments = state.Args.String()
 					ensureToolCallStarted(state)
-					writeIfConnected(map[string]any{
-						"type":         "response.function_call_arguments.delta",
-						"item_id":      state.ItemID,
-						"output_index": state.OutputIndex,
-						"call_id":      state.CallID,
-						"name":         state.Name,
-						"delta":        argsDelta,
-					})
+					if resolveResponsesToolCallShape(state.Name, toolShapes).Kind != responsesToolCallKindCustom {
+						writeIfConnected(map[string]any{
+							"type":         "response.function_call_arguments.delta",
+							"item_id":      state.ItemID,
+							"output_index": state.OutputIndex,
+							"call_id":      state.CallID,
+							"name":         state.Name,
+							"delta":        argsDelta,
+						})
+					}
 				}
 			}
 			if reason := choice.Get("finish_reason").String(); reason != "" {
@@ -665,7 +749,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		state.Arguments = state.Args.String()
 		outputs = append(outputs, indexedResponsesOutput{
 			Index: state.OutputIndex,
-			Item:  chatToolCallOutputItem(state.responsesChatToolCall, status),
+			Item:  chatToolCallOutputItem(state.responsesChatToolCall, status, toolShapes),
 		})
 	}
 	response := chatResponseWithOutput(responseID, originalModel, status, sortedResponsesOutputItems(outputs), usage, incompleteDetails)
@@ -717,18 +801,29 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			ensureToolCallStarted(state)
 			arguments := state.Args.String()
 			state.Arguments = arguments
-			_ = write(map[string]any{
-				"type":         "response.function_call_arguments.done",
-				"item_id":      state.ItemID,
-				"output_index": state.OutputIndex,
-				"call_id":      state.CallID,
-				"name":         state.Name,
-				"arguments":    arguments,
-			})
+			if resolveResponsesToolCallShape(state.Name, toolShapes).Kind == responsesToolCallKindCustom {
+				_ = write(map[string]any{
+					"type":         "response.custom_tool_call_input.done",
+					"item_id":      state.ItemID,
+					"output_index": state.OutputIndex,
+					"call_id":      state.CallID,
+					"name":         state.Name,
+					"input":        customToolInputFromChatArguments(arguments),
+				})
+			} else {
+				_ = write(map[string]any{
+					"type":         "response.function_call_arguments.done",
+					"item_id":      state.ItemID,
+					"output_index": state.OutputIndex,
+					"call_id":      state.CallID,
+					"name":         state.Name,
+					"arguments":    arguments,
+				})
+			}
 			_ = write(map[string]any{
 				"type":         "response.output_item.done",
 				"output_index": state.OutputIndex,
-				"item":         chatToolCallOutputItem(state.responsesChatToolCall, status),
+				"item":         chatToolCallOutputItem(state.responsesChatToolCall, status, toolShapes),
 			})
 		}
 		_ = write(map[string]any{"type": "response.completed", "response": response})
@@ -756,6 +851,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
+	toolShapes responsesToolCallShapes,
 ) (*OpenAIForwardResult, error) {
 	requestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
@@ -771,7 +867,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		writeResponsesError(c, http.StatusBadGateway, "server_error", "Failed to parse upstream response")
 		return nil, fmt.Errorf("parse chat completions response: %w", err)
 	}
-	response, usage := chatCompletionsResponseToResponses(&ccResp, originalModel)
+	response, usage := chatCompletionsResponseToResponses(&ccResp, originalModel, toolShapes)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -793,7 +889,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	}, nil
 }
 
-func chatCompletionsResponseToResponses(resp *apicompat.ChatCompletionsResponse, model string) (map[string]any, OpenAIUsage) {
+func chatCompletionsResponseToResponses(resp *apicompat.ChatCompletionsResponse, model string, toolShapes responsesToolCallShapes) (map[string]any, OpenAIUsage) {
 	usage := chatUsageToOpenAIUsage(resp.Usage)
 	content := ""
 	reasoning := ""
@@ -816,18 +912,21 @@ func chatCompletionsResponseToResponses(resp *apicompat.ChatCompletionsResponse,
 				Name:      toolCall.Function.Name,
 				Arguments: toolCall.Function.Arguments,
 			}
+			item = applyResponsesToolCallShape(item, toolShapes)
 			if item.CallID == "" {
 				item.CallID = "call_" + randomHexID(8)
 			}
 			toolCalls = append(toolCalls, item)
 		}
 		if choice.Message.FunctionCall != nil {
-			toolCalls = append(toolCalls, responsesChatToolCall{
+			item := responsesChatToolCall{
 				ItemID:    "fc_" + randomHexID(8),
 				CallID:    "call_" + randomHexID(8),
 				Name:      choice.Message.FunctionCall.Name,
 				Arguments: choice.Message.FunctionCall.Arguments,
-			})
+			}
+			item = applyResponsesToolCallShape(item, toolShapes)
+			toolCalls = append(toolCalls, item)
 		}
 	}
 	status := "completed"
@@ -843,14 +942,14 @@ func chatCompletionsResponseToResponses(resp *apicompat.ChatCompletionsResponse,
 	if !strings.HasPrefix(id, "resp_") {
 		id = "resp_" + strings.TrimPrefix(id, "chatcmpl_")
 	}
-	return chatOutputToResponsesResponse(id, model, status, reasoning, content, toolCalls, usage, incompleteDetails), usage
+	return chatOutputToResponsesResponse(id, model, status, reasoning, content, toolCalls, usage, incompleteDetails, toolShapes), usage
 }
 
 func chatTextToResponsesResponse(id, model, status, content string, usage OpenAIUsage, incompleteDetails map[string]any) map[string]any {
-	return chatOutputToResponsesResponse(id, model, status, "", content, nil, usage, incompleteDetails)
+	return chatOutputToResponsesResponse(id, model, status, "", content, nil, usage, incompleteDetails, nil)
 }
 
-func chatOutputToResponsesResponse(id, model, status, reasoning, content string, toolCalls []responsesChatToolCall, usage OpenAIUsage, incompleteDetails map[string]any) map[string]any {
+func chatOutputToResponsesResponse(id, model, status, reasoning, content string, toolCalls []responsesChatToolCall, usage OpenAIUsage, incompleteDetails map[string]any, toolShapes responsesToolCallShapes) map[string]any {
 	if id == "" {
 		id = "resp_" + randomHexID(12)
 	}
@@ -862,7 +961,7 @@ func chatOutputToResponsesResponse(id, model, status, reasoning, content string,
 		output = append(output, chatTextOutputItem("msg_"+randomHexID(8), status, content))
 	}
 	for _, toolCall := range toolCalls {
-		output = append(output, chatToolCallOutputItem(toolCall, status))
+		output = append(output, chatToolCallOutputItem(toolCall, status, toolShapes))
 	}
 	return chatResponseWithOutput(id, model, status, output, usage, incompleteDetails)
 }
@@ -941,24 +1040,61 @@ func chatTextOutputItem(id, status, content string) map[string]any {
 	}
 }
 
-func chatToolCallOutputItem(toolCall responsesChatToolCall, status string) map[string]any {
+func chatToolCallOutputItem(toolCall responsesChatToolCall, status string, toolShapes responsesToolCallShapes) map[string]any {
 	if toolCall.ItemID == "" {
 		toolCall.ItemID = "fc_" + randomHexID(8)
 	}
 	if toolCall.CallID == "" {
 		toolCall.CallID = "call_" + randomHexID(8)
 	}
+	toolCall = applyResponsesToolCallShape(toolCall, toolShapes)
+	shape := resolveResponsesToolCallShape(toolCall.Name, toolShapes)
+	item := map[string]any{
+		"id":      toolCall.ItemID,
+		"call_id": toolCall.CallID,
+		"name":    toolCall.Name,
+		"status":  status,
+	}
+	if toolCall.Namespace != "" {
+		item["namespace"] = toolCall.Namespace
+	}
+	if shape.Kind == responsesToolCallKindCustom {
+		item["type"] = "custom_tool_call"
+		item["input"] = customToolInputFromChatArguments(toolCall.Arguments)
+		return item
+	}
 	if toolCall.Arguments == "" {
 		toolCall.Arguments = "{}"
 	}
-	return map[string]any{
-		"type":      "function_call",
-		"id":        toolCall.ItemID,
-		"call_id":   toolCall.CallID,
-		"name":      toolCall.Name,
-		"arguments": toolCall.Arguments,
-		"status":    status,
+	item["type"] = "function_call"
+	item["arguments"] = toolCall.Arguments
+	return item
+}
+
+func customToolInputFromChatArguments(arguments string) string {
+	trimmed := strings.TrimSpace(arguments)
+	if trimmed == "" {
+		return ""
 	}
+	var rawString string
+	if err := json.Unmarshal([]byte(trimmed), &rawString); err == nil {
+		return rawString
+	}
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return arguments
+	}
+	if input, ok := obj["input"].(string); ok {
+		return input
+	}
+	if len(obj) == 1 {
+		for _, value := range obj {
+			if text, ok := value.(string); ok {
+				return text
+			}
+		}
+	}
+	return arguments
 }
 
 func chatUsageToOpenAIUsage(usage *apicompat.ChatUsage) OpenAIUsage {

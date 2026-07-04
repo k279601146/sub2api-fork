@@ -389,6 +389,50 @@ func TestForwardResponsesAsChatCompletions_StreamConvertsToolCalls(t *testing.T)
 	require.Equal(t, 7, result.Usage.OutputTokens)
 }
 
+func TestForwardResponsesAsChatCompletions_StreamRestoresCustomToolCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","input":"create file","tools":[{"type":"custom","name":"exec","description":"Run code mode","format":{"type":"grammar","syntax":"lark","definition":"start: /[\\s\\S]+/"}}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_exec_1","type":"function","function":{"name":"exec","arguments":""}}]}}]}`,
+		"",
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"input\":"}}]}}]}`,
+		"",
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"await tools.apply_patch('patch')\"}"}}]},"finish_reason":"tool_calls"}]}`,
+		"",
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","model":"deepseek-chat","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Extra = map[string]any{openai_compat.ExtraKeyResponsesSupported: false}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	responseBody := rec.Body.String()
+	require.Contains(t, responseBody, `"type":"custom_tool_call"`)
+	require.Contains(t, responseBody, `"call_id":"call_exec_1"`)
+	require.Contains(t, responseBody, `"input":"await tools.apply_patch('patch')"`)
+	require.NotContains(t, responseBody, `"type":"function_call","id"`)
+	require.NotContains(t, responseBody, `"type":"response.function_call_arguments.delta"`)
+	require.Equal(t, 11, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+}
+
 func TestResponsesBodyToChatCompletionsBody_ConvertsDynamicTools(t *testing.T) {
 	t.Parallel()
 
@@ -426,6 +470,29 @@ func TestResponsesBodyToChatCompletionsBody_ConvertsDynamicTools(t *testing.T) {
 	require.Equal(t, "object", gjson.GetBytes(got, "tools.1.function.parameters.type").String())
 }
 
+func TestResponsesBodyToChatCompletionsBody_WrapsCustomTools(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"gpt-5.4",
+		"input":"create a file",
+		"tools":[{
+			"type":"custom",
+			"name":"exec",
+			"description":"Run JavaScript code mode.",
+			"format":{"type":"grammar","syntax":"lark","definition":"start: /[\\s\\S]+/"}
+		}],
+		"stream":true
+	}`)
+
+	got, err := responsesBodyToChatCompletionsBody(body, "deepseek-chat")
+	require.NoError(t, err)
+	require.Equal(t, "function", gjson.GetBytes(got, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(got, "tools.0.function.name").String())
+	require.Equal(t, "input", gjson.GetBytes(got, "tools.0.function.parameters.required.0").String())
+	require.Equal(t, "string", gjson.GetBytes(got, "tools.0.function.parameters.properties.input.type").String())
+}
+
 func TestForwardResponsesAsChatCompletions_NonStreamConvertsToolCalls(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -454,6 +521,35 @@ func TestForwardResponsesAsChatCompletions_NonStreamConvertsToolCalls(t *testing
 	require.Equal(t, `{"cmd":"Get-ChildItem"}`, gjson.Get(rec.Body.String(), "output.0.arguments").String())
 	require.Equal(t, 11, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
+}
+
+func TestForwardResponsesAsChatCompletions_NonStreamRestoresCustomToolCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","input":"create file","tools":[{"type":"custom","name":"exec","description":"Run code mode","format":{"type":"grammar","syntax":"lark","definition":"start: /[\\s\\S]+/"}}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"deepseek-chat","choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"call_exec_1","type":"function","function":{"name":"exec","arguments":"{\"cmd\":\"await tools.apply_patch('patch')\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`)),
+	}}
+
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Extra = map[string]any{openai_compat.ExtraKeyResponsesSupported: false}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "custom_tool_call", gjson.Get(rec.Body.String(), "output.0.type").String())
+	require.Equal(t, "call_exec_1", gjson.Get(rec.Body.String(), "output.0.call_id").String())
+	require.Equal(t, "exec", gjson.Get(rec.Body.String(), "output.0.name").String())
+	require.Equal(t, "await tools.apply_patch('patch')", gjson.Get(rec.Body.String(), "output.0.input").String())
+	require.False(t, gjson.Get(rec.Body.String(), "output.0.arguments").Exists())
 }
 
 func TestForwardResponsesAsChatCompletions_StreamConvertsReasoningAndLegacyFunctionCall(t *testing.T) {
