@@ -431,6 +431,46 @@ func dev2BillingUsageRecord(h *handler.Handlers, cfg *config.Config) gin.Handler
 	}
 }
 
+func dev2RefundUsageRecordIDs(req dev2UsageRefundRequest) []int64 {
+	usageRecordIDs := make([]int64, 0, len(req.UsageRecordIDs)+len(req.UsageRecords))
+	seenUsageRecordIDs := make(map[int64]struct{}, len(req.UsageRecordIDs)+len(req.UsageRecords))
+	for _, id := range req.UsageRecordIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seenUsageRecordIDs[id]; ok {
+			continue
+		}
+		seenUsageRecordIDs[id] = struct{}{}
+		usageRecordIDs = append(usageRecordIDs, id)
+	}
+	for _, item := range req.UsageRecords {
+		if item.ID <= 0 {
+			continue
+		}
+		if _, ok := seenUsageRecordIDs[item.ID]; ok {
+			continue
+		}
+		seenUsageRecordIDs[item.ID] = struct{}{}
+		usageRecordIDs = append(usageRecordIDs, item.ID)
+	}
+	return usageRecordIDs
+}
+
+func dev2RefundAmountsFromOriginals(originals []*dbent.UsageLog) (float64, float64) {
+	units := 0.0
+	credit := 0.0
+	for _, item := range originals {
+		if item.TotalCost > 0 {
+			units += item.TotalCost
+		}
+		if item.ActualCost > 0 {
+			credit += item.ActualCost
+		}
+	}
+	return units, credit
+}
+
 func dev2BillingUsageRefund(h *handler.Handlers, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req dev2UsageRefundRequest
@@ -494,20 +534,11 @@ func dev2BillingUsageRefund(h *handler.Handlers, cfg *config.Config) gin.Handler
 
 		units := math.Max(req.Units, 0)
 		credit := 0.0
-		if len(req.UsageRecords) > 0 {
-			units = 0
-			for _, item := range req.UsageRecords {
-				if item.Units > 0 {
-					units += item.Units
-				}
-				if item.ActualCost > 0 {
-					credit += item.ActualCost
-				}
-			}
-		} else if len(req.UsageRecordIDs) > 0 {
+		usageRecordIDs := dev2RefundUsageRecordIDs(req)
+		if len(usageRecordIDs) > 0 {
 			originals, err := client.UsageLog.Query().
 				Where(
-					usagelog.IDIn(req.UsageRecordIDs...),
+					usagelog.IDIn(usageRecordIDs...),
 					usagelog.UserIDEQ(user.ID),
 					usagelog.BillingModeEQ(service.UsageBillingModeDev2Units),
 				).
@@ -516,15 +547,7 @@ func dev2BillingUsageRefund(h *handler.Handlers, cfg *config.Config) gin.Handler
 				response.ErrorFrom(c, err)
 				return
 			}
-			units = 0
-			for _, item := range originals {
-				if item.TotalCost > 0 {
-					units += item.TotalCost
-				}
-				if item.ActualCost > 0 {
-					credit += item.ActualCost
-				}
-			}
+			units, credit = dev2RefundAmountsFromOriginals(originals)
 		}
 		units = math.Round(units*100) / 100
 		credit = math.Round(credit*100) / 100
