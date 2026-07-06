@@ -82,6 +82,9 @@ func TestBackendModeUserGuard(t *testing.T) {
 		nilService bool
 		enabled    string
 		role       *string
+		subject    *AuthSubject
+		method     string
+		path       string
 		wantStatus int
 	}{
 		{
@@ -119,6 +122,46 @@ func TestBackendModeUserGuard(t *testing.T) {
 			role:       stringPtr(""),
 			wantStatus: http.StatusForbidden,
 		},
+		{
+			name:       "enabled_allows_authenticated_auth_me_self_read",
+			enabled:    "true",
+			role:       stringPtr("user"),
+			subject:    &AuthSubject{UserID: 123},
+			path:       "/api/v1/auth/me",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_allows_authenticated_ide_usage_self_read",
+			enabled:    "true",
+			role:       stringPtr("user"),
+			subject:    &AuthSubject{UserID: 123},
+			path:       "/ide/api/usage",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_blocks_self_read_without_subject",
+			enabled:    "true",
+			role:       stringPtr("user"),
+			path:       "/api/v1/auth/me",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "enabled_blocks_self_read_post",
+			enabled:    "true",
+			role:       stringPtr("user"),
+			subject:    &AuthSubject{UserID: 123},
+			method:     http.MethodPost,
+			path:       "/api/v1/auth/me",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "enabled_blocks_other_ide_api",
+			enabled:    "true",
+			role:       stringPtr("user"),
+			subject:    &AuthSubject{UserID: 123},
+			path:       "/ide/api/models",
+			wantStatus: http.StatusForbidden,
+		},
 	}
 
 	for _, tc := range tests {
@@ -134,6 +177,13 @@ func TestBackendModeUserGuard(t *testing.T) {
 					c.Next()
 				})
 			}
+			if tc.subject != nil {
+				subject := *tc.subject
+				r.Use(func(c *gin.Context) {
+					c.Set(string(ContextKeyUser), subject)
+					c.Next()
+				})
+			}
 
 			var svc *service.SettingService
 			if !tc.nilService {
@@ -141,12 +191,20 @@ func TestBackendModeUserGuard(t *testing.T) {
 			}
 
 			r.Use(BackendModeUserGuard(svc))
-			r.GET("/test", func(c *gin.Context) {
+			r.Any("/*path", func(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{"ok": true})
 			})
 
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			method := tc.method
+			if method == "" {
+				method = http.MethodGet
+			}
+			path := tc.path
+			if path == "" {
+				path = "/test"
+			}
+			req := httptest.NewRequest(method, path, nil)
 			r.ServeHTTP(w, req)
 
 			require.Equal(t, tc.wantStatus, w.Code)

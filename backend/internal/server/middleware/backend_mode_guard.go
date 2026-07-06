@@ -22,8 +22,32 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 			c.Next()
 			return
 		}
+		if backendModeAllowsAuthenticatedSelfRead(c) {
+			c.Next()
+			return
+		}
 		response.Forbidden(c, "Backend mode is active. User self-service is disabled.")
 		c.Abort()
+	}
+}
+
+func backendModeAllowsAuthenticatedSelfRead(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if strings.ToUpper(strings.TrimSpace(c.Request.Method)) != "GET" {
+		return false
+	}
+	subject, ok := GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		return false
+	}
+	path := strings.ToLower(strings.TrimSpace(c.Request.URL.Path))
+	switch path {
+	case "/api/v1/auth/me", "/ide/api/usage":
+		return true
+	default:
+		return false
 	}
 }
 
