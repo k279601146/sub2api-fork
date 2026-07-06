@@ -424,15 +424,8 @@ func resolveModelsListCacheTTL(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.Gateway.ModelsListCacheTTLSeconds) * time.Second
 }
 
-func modelsListCacheKey(groupID *int64, platform string, regionScope ...string) string {
-	scope := ""
-	if len(regionScope) > 0 {
-		scope = strings.TrimSpace(regionScope[0])
-	}
-	if scope == "" {
-		return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
-	}
-	return fmt.Sprintf("%d|%s|%s", derefGroupID(groupID), strings.TrimSpace(platform), scope)
+func modelsListCacheKey(groupID *int64, platform string) string {
+	return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
 }
 
 func prefetchedStickyGroupIDFromContext(ctx context.Context) (int64, bool) {
@@ -570,7 +563,6 @@ type GatewayService struct {
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
 	modelsListCacheTTL    time.Duration
-	modelRegionPolicy     *ModelRegionPolicy
 	settingService        *SettingService
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
@@ -640,7 +632,6 @@ func NewGatewayService(
 		settingService:       settingService,
 		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:   modelsListTTL,
-		modelRegionPolicy:    NewModelRegionFilterPolicy(cfg),
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
 		channelService:       channelService,
@@ -6939,13 +6930,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-			c.JSON(status, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    errType,
-					"message": LocalizeGatewayErrorMessage(status, errType, errMsg),
-				},
-			})
+		c.JSON(status, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    errType,
+				"message": LocalizeGatewayErrorMessage(status, errType, errMsg),
+			},
+		})
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -9357,8 +9348,8 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 
 // GetAvailableModels returns the list of request model IDs available for a group.
 // It aggregates model_mapping keys from all schedulable accounts in the group.
-func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string, regionScope ...string) []string {
-	cacheKey := modelsListCacheKey(groupID, platform, regionScope...)
+func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
+	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
 			if models, ok := cached.([]string); ok {
@@ -9400,10 +9391,8 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		mapping := acc.GetModelMapping()
 		if len(mapping) > 0 {
 			hasAnyMapping = true
-			for requestedModel, mappedModel := range mapping {
-				if s.isAvailableModelAllowedForRegion(regionScope, requestedModel, mappedModel) {
-					modelSet[requestedModel] = struct{}{}
-				}
+			for requestedModel := range mapping {
+				modelSet[requestedModel] = struct{}{}
 			}
 		}
 	}
@@ -9430,17 +9419,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	return cloneStringSlice(models)
 }
 
-func (s *GatewayService) isAvailableModelAllowedForRegion(regionScope []string, requestedModel string, mappedModel string) bool {
-	if s == nil || s.modelRegionPolicy == nil || len(regionScope) == 0 {
-		return true
-	}
-	scope := regionScope[0]
-	if s.modelRegionPolicy.IsModelAllowed(scope, requestedModel) {
-		return true
-	}
-	return mappedModel != "" && mappedModel != requestedModel && s.modelRegionPolicy.IsModelAllowed(scope, mappedModel)
-}
-
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {
 	if s == nil || s.modelsListCache == nil {
 		return
@@ -9449,8 +9427,6 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	normalizedPlatform := strings.TrimSpace(platform)
 	if groupID != nil && normalizedPlatform != "" {
 		s.modelsListCache.Delete(modelsListCacheKey(groupID, normalizedPlatform))
-		s.modelsListCache.Delete(modelsListCacheKey(groupID, normalizedPlatform, ModelRegionScopeGlobal))
-		s.modelsListCache.Delete(modelsListCacheKey(groupID, normalizedPlatform, ModelRegionScopeCN))
 		return
 	}
 

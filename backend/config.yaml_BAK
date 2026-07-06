@@ -55,38 +55,6 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
-# Model Region Isolation
-# 地区模型隔离
-# =============================================================================
-# 中国、未知、本地、私有 IP 只返回/允许下方关键字命中的模型；明确海外公网 IP 返回全量模型。
-# cn_allowed_models 使用大小写不敏感的子串匹配，同时兼容完整模型 ID。
-model_region_isolation:
-  enabled: true
-  geoip_mmdb_path: "data/GeoLite2-Country.mmdb"
-  cn_allowed_models:
-    - "deepseek"
-    - "qwen"
-    - "qwq"
-    - "qvq"
-    - "kimi"
-    - "moonshot"
-    - "glm"
-    - "chatglm"
-    - "zhipu"
-    - "doubao"
-    - "hunyuan"
-    - "ernie"
-    - "wenxin"
-    - "baichuan"
-    - "minimax"
-    - "abab"
-    - "yi-"
-    - "spark"
-    - "xunfei"
-    - "internlm"
-    - "step"
-
-# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================

@@ -1525,20 +1525,6 @@ func TestValidateConfigErrors(t *testing.T) {
 	}
 }
 
-func TestValidateModelRegionIsolationRequiresAllowlist(t *testing.T) {
-	resetViperWithJWTSecret(t)
-	cfg, loadErr := Load()
-	require.NoError(t, loadErr)
-	cfg.ModelRegionIsolation = ModelRegionIsolationConfig{
-		Enabled:         true,
-		CNAllowedModels: []string{},
-	}
-
-	err := cfg.Validate()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "model_region_isolation.cn_allowed_models")
-}
-
 func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 	buildValid := func(t *testing.T) *Config {
 		t.Helper()
