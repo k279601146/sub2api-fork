@@ -143,7 +143,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Empty(t, items[2].ID)
 	assert.Equal(t, "function_call_output", items[3].Type)
 	assert.Equal(t, "call_1", items[3].CallID)
-	assert.Equal(t, "Sunny, 72°F", items[3].Output)
+	assert.Equal(t, "Sunny, 72°F", items[3].Output.Text())
 }
 
 func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
@@ -1309,7 +1309,7 @@ func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 	// function_call_output should have text-only output (no image).
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "toolu_1", items[2].CallID)
-	assert.Equal(t, "(empty)", items[2].Output)
+	assert.Equal(t, "(empty)", items[2].Output.Text())
 
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
@@ -1346,7 +1346,7 @@ func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
 
 	// function_call_output should have text-only output.
 	assert.Equal(t, "function_call_output", items[2].Type)
-	assert.Equal(t, "File metadata: 800x600 PNG", items[2].Output)
+	assert.Equal(t, "File metadata: 800x600 PNG", items[2].Output.Text())
 
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
@@ -1381,7 +1381,60 @@ func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {
 	require.Len(t, items, 3)
 
 	// Text-only tool_result should produce a plain string.
-	assert.Equal(t, "Sunny, 72°F", items[2].Output)
+	assert.Equal(t, "Sunny, 72°F", items[2].Output.Text())
+}
+
+func TestResponsesToAnthropicRequest_FunctionCallOutputContentItems(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[
+			{"type":"function_call","call_id":"call_1","name":"exec","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":[
+				{"type":"input_text","text":"Script failed"},
+				{"type":"input_text","text":"TypeError: tools.apply_patch is not a function"},
+				{"type":"input_image","image_url":"data:image/png;base64,AAAA"}
+			]}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 2)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(resp.Messages[1].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "tool_result", blocks[0].Type)
+	assert.Equal(t, "call_1", blocks[0].ToolUseID)
+
+	var content string
+	require.NoError(t, json.Unmarshal(blocks[0].Content, &content))
+	assert.Equal(t, "Script failed\nTypeError: tools.apply_patch is not a function", content)
+}
+
+func TestResponsesToAnthropicRequest_CustomToolCallOutputContentItems(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[
+			{"type":"custom_tool_call","call_id":"call_custom","name":"exec","input":"noop"},
+			{"type":"custom_tool_call_output","call_id":"call_custom","output":[
+				{"type":"input_text","text":"custom output"}
+			]}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "tool_result", blocks[0].Type)
+
+	var content string
+	require.NoError(t, json.Unmarshal(blocks[0].Content, &content))
+	assert.Equal(t, "custom output", content)
 }
 
 func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {

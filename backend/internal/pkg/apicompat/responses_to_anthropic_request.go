@@ -143,9 +143,9 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
+		case item.Type == "function_call_output" || item.Type == "custom_tool_call_output":
 			// function_call_output → user message with tool_result block
-			outputContent := item.Output
+			outputContent := item.Output.Text()
 			if outputContent == "" {
 				outputContent = "(empty)"
 			}

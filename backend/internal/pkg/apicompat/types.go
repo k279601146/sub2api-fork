@@ -4,7 +4,11 @@
 // formats can be served through a unified gateway.
 package apicompat
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
 
 // ---------------------------------------------------------------------------
 // Anthropic Messages API types
@@ -217,7 +221,57 @@ type ResponsesInputItem struct {
 	Input     string `json:"input,omitempty"`
 
 	// type=function_call_output / custom_tool_call_output
-	Output string `json:"output,omitempty"`
+	Output ResponsesOutputContent `json:"output,omitempty"`
+}
+
+// ResponsesOutputContent preserves the Responses tool-output wire shape.
+type ResponsesOutputContent json.RawMessage
+
+func NewResponsesOutputText(text string) ResponsesOutputContent {
+	raw, _ := json.Marshal(text)
+	return ResponsesOutputContent(raw)
+}
+
+func (c ResponsesOutputContent) MarshalJSON() ([]byte, error) {
+	if len(c) == 0 {
+		return []byte(`""`), nil
+	}
+	return json.RawMessage(c).MarshalJSON()
+}
+
+func (c *ResponsesOutputContent) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		*c = nil
+		return nil
+	}
+	var value any
+	if err := json.Unmarshal(trimmed, &value); err != nil {
+		return err
+	}
+	*c = append((*c)[:0], trimmed...)
+	return nil
+}
+
+func (c ResponsesOutputContent) Text() string {
+	if len(c) == 0 {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(c, &text); err == nil {
+		return text
+	}
+	var parts []ResponsesContentPart
+	if err := json.Unmarshal(c, &parts); err == nil {
+		texts := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if (part.Type == "input_text" || part.Type == "output_text" || part.Type == "text") && part.Text != "" {
+				texts = append(texts, part.Text)
+			}
+		}
+		return strings.Join(texts, "\n")
+	}
+	return string(c)
 }
 
 // ResponsesContentPart is a typed content part in a Responses message.

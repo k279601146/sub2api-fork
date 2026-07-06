@@ -267,7 +267,7 @@ func chatToolToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	return []ResponsesInputItem{{
 		Type:   "function_call_output",
 		CallID: m.ToolCallID,
-		Output: output,
+		Output: NewResponsesOutputText(output),
 	}}, nil
 }
 
@@ -285,7 +285,7 @@ func chatFunctionToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	return []ResponsesInputItem{{
 		Type:   "function_call_output",
 		CallID: m.Name,
-		Output: output,
+		Output: NewResponsesOutputText(output),
 	}}, nil
 }
 

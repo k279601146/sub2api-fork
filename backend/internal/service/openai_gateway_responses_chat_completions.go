@@ -291,10 +291,10 @@ func responsesInputItemToChatMessages(item apicompat.ResponsesInputItem) ([]apic
 			}},
 		}}, nil
 	case "function_call_output":
-		raw, _ := json.Marshal(item.Output)
+		raw, _ := json.Marshal(item.Output.Text())
 		return []apicompat.ChatMessage{{Role: "tool", Content: raw, ToolCallID: item.CallID}}, nil
 	case "custom_tool_call_output":
-		raw, _ := json.Marshal(item.Output)
+		raw, _ := json.Marshal(item.Output.Text())
 		return []apicompat.ChatMessage{{Role: "tool", Content: raw, ToolCallID: item.CallID}}, nil
 	}
 
