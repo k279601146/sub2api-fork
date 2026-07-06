@@ -60,6 +60,37 @@ func TestRateLimiterFailureModes(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 }
 
+func TestRateLimiterRedisTimeoutDoesNotBlockHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalRun := rateLimitRun
+	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+		<-ctx.Done()
+		return 0, false, ctx.Err()
+	}
+	t.Cleanup(func() {
+		rateLimitRun = originalRun
+	})
+
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}))
+	router := gin.New()
+	router.Use(limiter.LimitWithOptions("test", 1, time.Second, RateLimitOptions{
+		RedisTimeout: 20 * time.Millisecond,
+	}))
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	startedAt := time.Now()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Less(t, time.Since(startedAt), 500*time.Millisecond)
+}
+
 func TestRateLimiterDifferentIPsIndependent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

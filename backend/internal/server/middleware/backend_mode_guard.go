@@ -27,12 +27,16 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 	}
 }
 
-func backendModeAllowsAuthPath(path string) bool {
+func backendModeAllowsAuthPath(method string, path string) bool {
+	method = strings.ToUpper(strings.TrimSpace(method))
 	path = strings.ToLower(strings.TrimSpace(path))
 	for _, suffix := range []string{"/auth/login", "/auth/login/2fa", "/auth/logout", "/auth/refresh"} {
 		if strings.HasSuffix(path, suffix) {
 			return true
 		}
+	}
+	if method == "POST" && path == "/ide/auth/token" {
+		return true
 	}
 
 	for _, suffix := range []string{
@@ -70,7 +74,7 @@ func BackendModeAuthGuard(settingService *service.SettingService) gin.HandlerFun
 			c.Next()
 			return
 		}
-		if backendModeAllowsAuthPath(c.Request.URL.Path) {
+		if backendModeAllowsAuthPath(c.Request.Method, c.Request.URL.Path) {
 			c.Next()
 			return
 		}

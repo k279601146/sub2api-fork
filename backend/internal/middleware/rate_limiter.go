@@ -22,8 +22,11 @@ const (
 
 // RateLimitOptions 限流可选配置
 type RateLimitOptions struct {
-	FailureMode RateLimitFailureMode
+	FailureMode  RateLimitFailureMode
+	RedisTimeout time.Duration
 }
+
+const defaultRateLimitRedisTimeout = 300 * time.Millisecond
 
 var rateLimitScript = redis.NewScript(`
 local current = redis.call('INCR', KEYS[1])
@@ -86,12 +89,17 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 	if failureMode != RateLimitFailClose {
 		failureMode = RateLimitFailOpen
 	}
+	redisTimeout := opts.RedisTimeout
+	if redisTimeout <= 0 {
+		redisTimeout = defaultRateLimitRedisTimeout
+	}
 
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 		redisKey := r.prefix + key + ":" + ip
 
-		ctx := c.Request.Context()
+		ctx, cancel := context.WithTimeout(c.Request.Context(), redisTimeout)
+		defer cancel()
 
 		windowMillis := windowTTLMillis(window)
 

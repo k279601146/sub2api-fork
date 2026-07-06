@@ -88,7 +88,7 @@ func RegisterIDERoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.IDEAuth.Callback)
 		auth.POST("/token", rateLimiter.LimitWithOptions("ide-auth-token", 30, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
+			FailureMode: middleware.RateLimitFailOpen,
 		}), h.IDEAuth.Token)
 	}
 

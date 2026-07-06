@@ -159,6 +159,7 @@ func TestBackendModeAuthGuard(t *testing.T) {
 		name       string
 		nilService bool
 		enabled    string
+		method     string
 		path       string
 		wantStatus int
 	}{
@@ -197,6 +198,20 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			enabled:    "true",
 			path:       "/api/v1/auth/refresh",
 			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_allows_ide_token_exchange",
+			enabled:    "true",
+			method:     http.MethodPost,
+			path:       "/ide/auth/token",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_blocks_ide_token_exchange_get",
+			enabled:    "true",
+			method:     http.MethodGet,
+			path:       "/ide/auth/token",
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "enabled_blocks_linuxdo_oauth_start",
@@ -344,7 +359,11 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			})
 
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			method := tc.method
+			if method == "" {
+				method = http.MethodGet
+			}
+			req := httptest.NewRequest(method, tc.path, nil)
 			r.ServeHTTP(w, req)
 
 			require.Equal(t, tc.wantStatus, w.Code)
