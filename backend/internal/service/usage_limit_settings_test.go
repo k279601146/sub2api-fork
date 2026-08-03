@@ -116,9 +116,12 @@ func TestApplyUsageWindows_UsesWeeklyResetWhenWeeklyLimitIsFull(t *testing.T) {
 	applyUsageWindows(stats, 0, 700, windowReset, weeklyReset, 100, 700)
 
 	require.NotNil(t, stats.CurrentWindow)
+	require.Equal(t, 100.0, stats.CurrentWindow.UsedUnits)
+	require.Equal(t, 100.0, stats.CurrentWindow.UsedPercent)
 	require.Equal(t, 0.0, stats.CurrentWindow.RemainingUnits)
 	require.Equal(t, weeklyReset.Format(usageWindowTimeLayout), stats.CurrentWindow.ResetsAt)
 	require.NotEqual(t, windowReset.Format(usageWindowTimeLayout), stats.CurrentWindow.ResetsAt)
+	require.True(t, stats.CurrentWindow.LockedByWeekly)
 }
 
 func TestCalculateDev2RewardBalanceCost_UsesWindowBeforeBalance(t *testing.T) {
@@ -140,6 +143,13 @@ func TestCalculateDev2RewardBalanceCost_UsesStricterWeeklyWindow(t *testing.T) {
 
 	require.True(t, ok)
 	require.Equal(t, 20.0, got)
+}
+
+func TestCalculateDev2RewardBalanceCost_ChargesAllUnitsWhenWeeklyIsFull(t *testing.T) {
+	got, ok := calculateDev2RewardBalanceCost(0, 100, 700, 700, 8, 8)
+
+	require.True(t, ok)
+	require.Equal(t, 8.0, got)
 }
 
 func TestCalculateDev2RewardBalanceCost_RejectsInsufficientBalance(t *testing.T) {

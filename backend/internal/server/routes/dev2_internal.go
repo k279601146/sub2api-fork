@@ -113,12 +113,14 @@ type dev2UsageRefundRequest struct {
 }
 
 type dev2UsageRecordResponse struct {
-	ID         int64                          `json:"id"`
-	RequestID  string                         `json:"request_id"`
-	Balance    float64                        `json:"balance"`
-	Units      float64                        `json:"units"`
-	ActualCost float64                        `json:"actual_cost"`
-	Usage      *usagestats.UserDashboardStats `json:"usage,omitempty"`
+	ID          int64                          `json:"id"`
+	RequestID   string                         `json:"request_id"`
+	Balance     float64                        `json:"balance"`
+	Units       float64                        `json:"units"`
+	QuotaCost   float64                        `json:"quota_cost"`
+	ActualCost  float64                        `json:"actual_cost"`
+	BalanceCost float64                        `json:"balance_cost"`
+	Usage       *usagestats.UserDashboardStats `json:"usage,omitempty"`
 }
 
 type dev2UsageRefundResponse struct {
@@ -394,7 +396,7 @@ func dev2BillingUsageRecord(h *handler.Handlers, cfg *config.Config) gin.Handler
 			InputTokens:    req.InputTokens,
 			OutputTokens:   req.OutputTokens,
 			TotalCost:      req.Units,
-			ActualCost:     req.Units,
+			ActualCost:     0,
 			RateMultiplier: 1,
 			BillingMode:    service.UsageBillingModeDev2Units,
 			Stream:         true,
@@ -421,12 +423,14 @@ func dev2BillingUsageRecord(h *handler.Handlers, cfg *config.Config) gin.Handler
 		}
 
 		response.Success(c, dev2UsageRecordResponse{
-			ID:         log.ID,
-			RequestID:  req.RequestID,
-			Balance:    updated.Balance,
-			Units:      req.Units,
-			ActualCost: log.ActualCost,
-			Usage:      stats,
+			ID:          log.ID,
+			RequestID:   req.RequestID,
+			Balance:     updated.Balance,
+			Units:       req.Units,
+			QuotaCost:   math.Max(log.TotalCost-log.ActualCost, 0),
+			ActualCost:  log.ActualCost,
+			BalanceCost: log.ActualCost,
+			Usage:       stats,
 		})
 	}
 }

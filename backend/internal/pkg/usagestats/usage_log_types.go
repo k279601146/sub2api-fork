@@ -131,6 +131,7 @@ type UsageLimitWindow struct {
 	RemainingUnits float64 `json:"remaining_units"`
 	UsedPercent    float64 `json:"used_percent"`
 	ResetsAt       string  `json:"resets_at"`
+	LockedByWeekly bool    `json:"locked_by_weekly,omitempty"`
 }
 
 // GroupStat represents usage statistics for a single group

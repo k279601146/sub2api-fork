@@ -460,10 +460,15 @@ func buildCurrentUsageLimitWindow(currentUsed, currentLimit float64, currentRese
 	weeklyRemaining := math.Max(weeklyLimit-weeklyUsed, 0)
 	remaining := math.Min(currentRemaining, weeklyRemaining)
 	reset := currentReset
+	lockedByWeekly := false
 	if weeklyRemaining <= 0 {
 		reset = weeklyReset
+		lockedByWeekly = true
+		currentUsed = currentLimit
 	}
-	return buildUsageLimitWindowWithRemaining(currentUsed, currentLimit, remaining, reset)
+	window := buildUsageLimitWindowWithRemaining(currentUsed, currentLimit, remaining, reset)
+	window.LockedByWeekly = lockedByWeekly
+	return window
 }
 
 func buildUsageLimitWindow(used, limit float64, reset time.Time) *usagestats.UsageLimitWindow {
